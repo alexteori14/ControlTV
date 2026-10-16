@@ -1,0 +1,16 @@
+{
+  "name": "controltv-monorepo",
+  "version": "1.0.0",
+  "description": "Industrial Smart TV & Digital Signage Remote Control and Monitoring NOC Center",
+  "scripts": {
+    "start": "node run.js",
+    "dev": "node run.js",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "build": "npm run build:backend && npm run build:frontend"
+  },
+  "keywords": ["smart-tv", "digital-signage", "iot", "pjlink", "samsung-mdc", "lg-supersign", "webrtc"],
+  "author": "Antigravity Senior Architect",
+  "license": "MIT"
+}

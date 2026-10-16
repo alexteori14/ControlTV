@@ -1,0 +1,131 @@
+Actúa como un Arquitecto de Software Senior especializado en IoT, Redes, Control Remoto de Dispositivos y Aplicaciones Empresariales.
+
+Necesito desarrollar una aplicación web moderna para controlar una pantalla Smart TV o Digital Signage mediante su dirección IP.
+
+Objetivo general:
+Permitir que un usuario registre una pantalla por IP, guarde su configuración y la controle remotamente desde una interfaz web.
+
+Requisitos funcionales:
+
+1. Gestión de dispositivos
+   - Registrar una pantalla mediante:
+     - Nombre
+     - Dirección IP
+     - Puerto
+     - Marca
+     - Modelo
+     - Tipo de conexión
+   - Guardar la información en una base de datos.
+   - Editar dispositivos.
+   - Eliminar dispositivos.
+   - Mostrar listado de pantallas registradas.
+
+2. Control remoto
+   - Botón Encender.
+   - Botón Apagar.
+   - Reiniciar pantalla.
+   - Silenciar.
+   - Ajustar volumen.
+   - Ajustar brillo.
+   - Cambiar entrada:
+       HDMI1
+       HDMI2
+       HDMI3
+       DisplayPort
+       USB
+   - Cambiar canal (si aplica).
+
+3. Comunicación por red
+   - Conexión mediante IP.
+   - Soporte para:
+       HTTP
+       HTTPS
+       WebSocket
+       Telnet
+       API REST
+       SNMP
+       PJLink
+   - Validar conectividad antes de enviar comandos.
+   - Mostrar estado conectado o desconectado.
+
+4. Dashboard
+   - Estado actual de la pantalla.
+   - Encendida o apagada.
+   - Temperatura si el dispositivo lo soporta.
+   - Dirección IP.
+   - Tiempo en línea.
+   - Última comunicación.
+
+5. Vista remota de la pantalla
+   - Mostrar en tiempo real lo que se visualiza en la TV.
+   - Si la TV soporta streaming:
+       usar RTSP.
+   - Si soporta WebRTC:
+       usar WebRTC.
+   - Si existe una PC conectada al TV:
+       capturar la pantalla de la PC mediante Screen Capture API.
+   - Mostrar vista previa dentro de la aplicación.
+   - Permitir pantalla completa.
+
+6. Descubrimiento automático
+   - Escanear la red local.
+   - Detectar dispositivos compatibles.
+   - Mostrar:
+       IP
+       MAC Address
+       Fabricante
+       Hostname
+
+7. Seguridad
+   - Login.
+   - Roles:
+       Administrador
+       Supervisor
+       Operador
+   - Registro de auditoría.
+   - Historial de comandos ejecutados.
+
+8. Arquitectura deseada
+   Frontend:
+       React + TypeScript
+       TailwindCSS
+       Material UI
+
+   Backend:
+       Node.js + Express
+
+   Base de datos:
+       PostgreSQL
+
+   Comunicación:
+       REST API
+       WebSocket
+
+9. Diseño UI/UX
+   - Dashboard moderno tipo centro de monitoreo industrial.
+   - Tarjetas informativas.
+   - Gráficas en tiempo real.
+   - Indicadores de estado.
+   - Tema oscuro.
+
+10. Entregables
+   - Arquitectura completa.
+   - Código fuente.
+   - Modelo de base de datos.
+   - Endpoints REST.
+   - Diagramas de flujo.
+   - Estructura de carpetas.
+   - Estrategia de despliegue.
+   - Buenas prácticas de seguridad.
+   - Plan de pruebas.
+
+Importante:
+Antes de asumir que la TV puede mostrar su contenido remotamente, verificar si el modelo soporta:
+- RTSP
+- ONVIF
+- Miracast Receiver
+- Chromecast
+- WebRTC
+- API de Screen Capture
+
+Si la TV no soporta captura remota, proponer alternativas usando una PC intermedia o dispositivo HDMI Capture.

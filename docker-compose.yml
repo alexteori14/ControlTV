@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: controltv-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword123
+      POSTGRES_DB: controltv
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/src/db/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - controltv-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: controltv-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DB_TYPE: postgres
+      DATABASE_URL: postgres://postgres:postgrespassword123@postgres:5432/controltv
+      JWT_SECRET: controltv-enterprise-jwt-super-secret-key-prod
+      HEARTBEAT_INTERVAL_MS: 15000
+    ports:
+      - "5000:5000"
+      - "9099:9099" # Simulator port
+    depends_on:
+      - postgres
+    networks:
+      - controltv-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: controltv-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - controltv-net
+
+networks:
+  controltv-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
