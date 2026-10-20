@@ -82,16 +82,6 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
   const [isKeyboardPassthrough, setIsKeyboardPassthrough] = useState(false);
   const [lastSentText, setLastSentText] = useState<string | null>(null);
 
-  // Smart TV Navigation Focus (Where you are looking on screen)
-  const [focusedAppIndex, setFocusedAppIndex] = useState<number>(0);
-  const tvApps = [
-    { id: 'youtube', name: 'YouTube', icon: '▶', category: 'Video Stream' },
-    { id: 'netflix', name: 'Netflix', icon: 'N', category: 'Películas & Series' },
-    { id: 'browser', name: 'Navegador Web', icon: '🌐', category: 'Internet / URLs' },
-    { id: 'hdmi1', name: 'HDMI 1 (PC)', icon: '📺', category: 'Señal en Vivo' },
-    { id: 'settings', name: 'Ajustes TV', icon: '⚙', category: 'Configuración' },
-  ];
-
   // Real-Time Reactive Samsung OSD Overlays
   const [osdVolume, setOsdVolume] = useState<{ show: boolean; level: number; muted: boolean }>({
     show: false,
@@ -202,11 +192,9 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
         handleCommand('KEY_PRESS', { key: 'DOWN' });
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        setFocusedAppIndex((prev) => (prev > 0 ? prev - 1 : tvApps.length - 1));
         handleCommand('KEY_PRESS', { key: 'LEFT' });
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        setFocusedAppIndex((prev) => (prev < tvApps.length - 1 ? prev + 1 : 0));
         handleCommand('KEY_PRESS', { key: 'RIGHT' });
       } else if (e.key === 'Enter') {
         e.preventDefault();
@@ -230,7 +218,7 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isKeyboardPassthrough, selectedDevice, focusedAppIndex]);
+  }, [isKeyboardPassthrough, selectedDevice]);
 
   // Execute remote commands and trigger corresponding TV Screen OSD
   const handleCommand = async (command: CommandType, payload?: any) => {
@@ -251,19 +239,13 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
     } else if (command === 'TOGGLE_MUTE' || command === 'MUTE') {
       triggerOsdVolume(volume, !selectedDevice.isMuted);
     } else if (command === 'KEY_PRESS') {
-      if (payload.key === 'LEFT') {
-        setFocusedAppIndex((prev) => (prev > 0 ? prev - 1 : tvApps.length - 1));
-      } else if (payload.key === 'RIGHT') {
-        setFocusedAppIndex((prev) => (prev < tvApps.length - 1 ? prev + 1 : 0));
-      }
-
       const keyLabelMap: Record<string, string> = {
         UP: '▲ Arriba',
         DOWN: '▼ Abajo',
         LEFT: '◄ Izquierda',
         RIGHT: '► Derecha',
-        ENTER: `✓ OK: ${tvApps[focusedAppIndex]?.name || 'Aceptar'}`,
-        OK: `✓ OK: ${tvApps[focusedAppIndex]?.name || 'Aceptar'}`,
+        ENTER: '✓ OK / Aceptar',
+        OK: '✓ OK / Aceptar',
         HOME: '🏠 Inicio Smart Hub',
         MENU: '☰ Menú de Ajustes',
         BACK: '↩ Volver',
@@ -452,65 +434,6 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
       ctx.textAlign = 'right';
       ctx.fillText(`${timeStr}`, width - 70, 70);
 
-      // =========================================================================
-      // INTERACTIVE APP TILES & FOCUS (Centered cleanly in screen)
-      // =========================================================================
-      const tileW = 210;
-      const tileH = 150;
-      const tileGap = 24;
-      const totalAppsW = tvApps.length * tileW + (tvApps.length - 1) * tileGap;
-      const appsStartX = (width - totalAppsW) / 2;
-      const appsStartY = (height - tileH) / 2;
-
-      tvApps.forEach((app, idx) => {
-        const x = appsStartX + idx * (tileW + tileGap);
-        const y = appsStartY;
-        const isFocused = idx === focusedAppIndex;
-
-        ctx.fillStyle = isFocused ? 'rgba(30, 41, 59, 0.95)' : 'rgba(15, 23, 42, 0.6)';
-        ctx.beginPath();
-        ctx.roundRect(x, y, tileW, tileH, 20);
-        ctx.fill();
-
-        if (isFocused) {
-          ctx.strokeStyle = '#22d3ee';
-          ctx.lineWidth = 3.5;
-          ctx.shadowColor = '#06b6d4';
-          ctx.shadowBlur = 20;
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-        } else {
-          ctx.strokeStyle = 'rgba(51, 65, 85, 0.6)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-
-        ctx.fillStyle = isFocused ? '#22d3ee' : '#94a3b8';
-        ctx.font = '38px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(app.icon, x + tileW / 2, y + 60);
-
-        ctx.fillStyle = isFocused ? '#ffffff' : '#cbd5e1';
-        ctx.font = 'bold 18px "Segoe UI", Roboto, sans-serif';
-        ctx.fillText(app.name, x + tileW / 2, y + 96);
-
-        ctx.fillStyle = isFocused ? '#38bdf8' : '#64748b';
-        ctx.font = '12px sans-serif';
-        ctx.fillText(app.category, x + tileW / 2, y + 122);
-
-        if (isFocused) {
-          ctx.fillStyle = '#06b6d4';
-          ctx.beginPath();
-          ctx.roundRect(x + 30, y + tileH + 10, tileW - 60, 24, 8);
-          ctx.fill();
-
-          ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 12px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText('▲ ENFOCADO', x + tileW / 2, y + tileH + 26);
-        }
-      });
-
       step++;
       frameId = requestAnimationFrame(render);
     };
@@ -519,7 +442,7 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
     return () => {
       cancelAnimationFrame(frameId);
     };
-  }, [streamMode, selectedDevice, pingLatency, lastSentText, typedText, focusedAppIndex]);
+  }, [streamMode, selectedDevice, pingLatency, lastSentText, typedText]);
 
   // Fullscreen toggle
   const toggleFullscreen = () => {
@@ -714,173 +637,42 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
       )}
 
       {/* ========================================================================= */}
-      {/* PANTALLA DE LA TV CON CONTROL Y TECLADO INTEGRADOS DENTRO DE ELLA          */}
+      {/* LAYOUT PRINCIPAL: CONTROL REMOTO A LA IZQUIERDA + PANTALLA TV A LA DERECHA */}
       {/* ========================================================================= */}
-      <div
-        ref={tvContainerRef}
-        className="relative rounded-3xl bg-slate-950 border-[6px] border-[#131b2c] shadow-[0_20px_60px_rgba(0,0,0,0.85)] overflow-hidden flex flex-col"
-      >
-
-        {/* 16:9 Screen Display Window */}
-        <div className="relative aspect-video w-full bg-black overflow-hidden flex items-center justify-center">
-          {!isPowerOn ? (
-            <div className="w-full h-full bg-[#05070c] flex flex-col items-center justify-center space-y-2">
-              <div className="w-14 h-14 rounded-full bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-600">
-                <Power className="w-7 h-7 text-rose-500 animate-pulse" />
-              </div>
-              <div className="text-center">
-                <h4 className="text-sm font-bold text-slate-300 font-mono">
-                  {selectedDevice?.name || 'Samsung Smart TV'} en Modo Standby
-                </h4>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">
-                  Pantalla apagada. Pulsa "Encender" en los controles abajo para activarla.
-                </p>
-              </div>
-            </div>
-          ) : streamMode === 'HDMI_CAPTURE' || streamMode === 'SCREEN_CAPTURE' ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-contain"
-            />
-          ) : (
-            <canvas
-              ref={canvasRef}
-              width={1920}
-              height={1080}
-              className="w-full h-full object-contain"
-            />
-          )}
-
-          {/* Volume Slider OSD Overlay */}
-          {osdVolume.show && isPowerOn && (
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 animate-in fade-in slide-in-from-right-4 duration-300 z-30">
-              <div className="p-3.5 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-cyan-500/40 text-white shadow-2xl flex flex-col items-center space-y-2.5 w-16">
-                {osdVolume.muted ? (
-                  <VolumeX className="w-6 h-6 text-rose-400 animate-pulse" />
-                ) : (
-                  <Volume2 className="w-6 h-6 text-cyan-400" />
-                )}
-
-                <div className="h-28 w-2.5 rounded-full bg-slate-800 overflow-hidden flex flex-col justify-end p-0.5">
-                  <div
-                    className="w-full rounded-full bg-gradient-to-t from-cyan-500 to-blue-400 transition-all duration-150"
-                    style={{ height: `${osdVolume.muted ? 0 : osdVolume.level}%` }}
-                  ></div>
-                </div>
-
-                <span className="text-[11px] font-mono font-bold text-cyan-300">
-                  {osdVolume.muted ? 'MUTE' : osdVolume.level}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Key Press HUD at Bottom Center of Screen Area */}
-          {osdKey.show && isPowerOn && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-30 pointer-events-none">
-              <div className="px-3.5 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-xl border border-slate-700 text-white shadow-2xl flex items-center space-x-2 text-xs font-mono">
-                <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
-                <span className="text-slate-200 font-bold">{osdKey.keyName}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Laptop Keyboard Text OSD Banner */}
-          {osdText.show && isPowerOn && (
-            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 animate-in fade-in zoom-in-95 duration-300 z-30 pointer-events-none max-w-[85%]">
-              <div className="px-5 py-3 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border border-cyan-400/60 text-white shadow-[0_15px_50px_rgba(6,182,212,0.4)] flex items-center space-x-3">
-                <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex-shrink-0">
-                  <Keyboard className="w-5 h-5 animate-pulse" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 block font-bold">
-                    Texto escrito en la TV:
-                  </span>
-                  <span className="text-sm font-bold font-sans text-slate-100 truncate block">
-                    "{osdText.text}"
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ========================================================================= */}
-        {/* CONTROLES Y TECLADO INTEGRADOS DENTRO DE LA PANTALLA (SIN ENTRADAS DE VIDEO)*/}
-        {/* ========================================================================= */}
-        <div className="w-full bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 p-3 space-y-2.5 z-30">
-          {/* 1. LA PURA BARRA DEL TECLADO (Sin atajos de búsqueda) */}
-          <div className="flex items-center space-x-2">
-            <div className="relative flex-1 flex items-center">
-              <Keyboard className="w-4 h-4 text-cyan-400 absolute left-3 pointer-events-none" />
-              <input
-                ref={keyboardInputRef}
-                type="text"
-                placeholder="Escribe con el teclado de tu laptop y presiona Enter para escribir en la TV..."
-                value={typedText}
-                onChange={(e) => setTypedText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleSendText();
-                  }
-                }}
-                className="w-full bg-slate-900 border border-slate-700 focus:border-cyan-400 rounded-xl pl-9 pr-24 py-2 text-xs text-slate-100 focus:outline-none font-sans placeholder-slate-500 shadow-inner"
+      <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+        {/* PANEL IZQUIERDO: CONTROL REMOTO ESTÉTICO Y ERGONÓMICO */}
+        <div className="w-full lg:w-72 flex-shrink-0 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 border border-slate-800/90 shadow-[0_20px_50px_rgba(0,0,0,0.75)] p-4 flex flex-col justify-between space-y-4">
+          {/* Cabecera del Control + Indicador Infrarrojo/Red */}
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+            <div className="flex items-center space-x-2">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isExecuting
+                    ? 'bg-cyan-400 shadow-[0_0_8px_#22d3ee] scale-125'
+                    : isPowerOn
+                    ? 'bg-emerald-400'
+                    : 'bg-rose-500'
+                } transition-all`}
               />
-
-              <div className="absolute right-1.5 flex items-center space-x-1">
-                {typedText && (
-                  <button
-                    onClick={() => {
-                      setTypedText('');
-                      keyboardInputRef.current?.focus();
-                    }}
-                    className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                    title="Limpiar"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <button
-                  onClick={() => handleSendText()}
-                  disabled={!typedText.trim() || isExecuting}
-                  className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white font-mono text-xs font-bold flex items-center space-x-1 shadow-md shadow-cyan-600/30 disabled:opacity-40 transition-all"
-                >
-                  <Send className="w-3 h-3" />
-                  <span>Enviar</span>
-                </button>
-              </div>
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-300">
+                Smart Remote
+              </span>
             </div>
-
-            {/* Live Keyboard Passthrough Toggle Button */}
-            <button
-              onClick={() => {
-                playTactileBeep(isKeyboardPassthrough ? 600 : 1100, 0.04);
-                setIsKeyboardPassthrough(!isKeyboardPassthrough);
-              }}
-              className={`px-3 py-2 rounded-xl border text-xs font-mono font-bold flex items-center space-x-1.5 transition-all flex-shrink-0 ${
-                isKeyboardPassthrough
-                  ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/60 shadow-lg shadow-emerald-950'
-                  : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border-slate-700'
-              }`}
-              title="Cualquier tecla de tu laptop (letras, flechas, Enter) se transmite a la TV"
-            >
-              <Keyboard className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{isKeyboardPassthrough ? '🟢 En Vivo: ON' : '⌨️ Modo Teclado'}</span>
-            </button>
+            <span className="text-[10px] font-mono text-cyan-400/80 bg-cyan-950/40 border border-cyan-800/40 px-2 py-0.5 rounded-full">
+              {isPowerOn ? 'ACTIVO' : 'STANDBY'}
+            </span>
           </div>
 
-          {/* 2. CONTROL COMPACTO DENTRO DE LA PANTALLA (SIN ENTRADAS DE VIDEO) */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs font-mono pt-0.5">
-            {/* Grupo Energía (Encender, Apagar, Reiniciar) */}
-            <div className="flex items-center space-x-1.5">
+          {/* 1. Grupo Energía (Encender, Apagar, Reiniciar) */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block px-1">
+              Energía & Sistema
+            </span>
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleCommand('POWER_ON')}
                 disabled={isExecuting}
-                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold flex items-center space-x-1 shadow-md shadow-emerald-600/30 transition-all text-xs"
+                className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-mono font-bold flex items-center justify-center space-x-1.5 shadow-lg shadow-emerald-600/25 transition-all text-xs"
                 title="Encender TV (WoL)"
               >
                 <Power className="w-3.5 h-3.5" />
@@ -890,28 +682,141 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
               <button
                 onClick={() => handleCommand('POWER_OFF')}
                 disabled={isExecuting}
-                className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold flex items-center space-x-1 shadow-md shadow-rose-600/30 transition-all text-xs"
+                className="py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-mono font-bold flex items-center justify-center space-x-1.5 shadow-lg shadow-rose-600/25 transition-all text-xs"
                 title="Apagar pantalla (Standby)"
               >
                 <Power className="w-3.5 h-3.5" />
                 <span>Apagar</span>
               </button>
-
-              <button
-                onClick={() => handleCommand('RESTART')}
-                disabled={isExecuting}
-                className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"
-                title="Reiniciar software de pantalla"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
-              </button>
             </div>
 
-            {/* Grupo Volumen & Silenciar */}
-            <div className="flex items-center space-x-2 bg-slate-900/90 px-3 py-1 rounded-xl border border-slate-800">
+            <button
+              onClick={() => handleCommand('RESTART')}
+              disabled={isExecuting}
+              className="w-full py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-95 text-slate-300 border border-slate-800 text-xs font-mono flex items-center justify-center space-x-1.5 transition-all"
+              title="Reiniciar software de pantalla"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Reiniciar Sistema TV</span>
+            </button>
+          </div>
+
+          {/* 2. Cruceta D-Pad Circular Ergonómica */}
+          <div className="flex flex-col items-center justify-center py-1">
+            <div className="relative w-44 h-44 rounded-full bg-slate-900/90 border-2 border-slate-800 shadow-[inset_0_4px_20px_rgba(0,0,0,0.8)] flex items-center justify-center p-2">
+              {/* Arriba */}
+              <button
+                onClick={() => handleCommand('KEY_PRESS', { key: 'UP' })}
+                className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-10 rounded-t-2xl hover:bg-slate-800/90 active:scale-95 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-all"
+                title="Arriba"
+              >
+                <ChevronUp className="w-5 h-5" />
+              </button>
+
+              {/* Abajo */}
+              <button
+                onClick={() => handleCommand('KEY_PRESS', { key: 'DOWN' })}
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 w-12 h-10 rounded-b-2xl hover:bg-slate-800/90 active:scale-95 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-all"
+                title="Abajo"
+              >
+                <ChevronDown className="w-5 h-5" />
+              </button>
+
+              {/* Izquierda */}
+              <button
+                onClick={() => handleCommand('KEY_PRESS', { key: 'LEFT' })}
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-12 rounded-l-2xl hover:bg-slate-800/90 active:scale-95 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-all"
+                title="Izquierda"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+
+              {/* Derecha */}
+              <button
+                onClick={() => handleCommand('KEY_PRESS', { key: 'RIGHT' })}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-12 rounded-r-2xl hover:bg-slate-800/90 active:scale-95 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-all"
+                title="Derecha"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+
+              {/* Botón Central OK */}
+              <button
+                onClick={() => handleCommand('KEY_PRESS', { key: 'ENTER' })}
+                className="w-16 h-16 rounded-full bg-gradient-to-b from-cyan-500 to-cyan-700 hover:from-cyan-400 hover:to-cyan-600 active:scale-95 text-white font-mono font-bold text-xs shadow-[0_0_20px_rgba(6,182,212,0.4)] border border-cyan-300/40 flex items-center justify-center transition-all"
+                title="OK / Enter"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+
+          {/* 3. Botones de Navegación Rápida (Volver, Inicio, Menú, Info) */}
+          <div className="grid grid-cols-4 gap-1.5">
+            <button
+              onClick={() => handleCommand('KEY_PRESS', { key: 'BACK' })}
+              className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-purple-400 border border-slate-800/90 active:scale-95 transition-all space-y-1"
+              title="Volver"
+            >
+              <CornerDownLeft className="w-4 h-4" />
+              <span className="text-[10px] font-mono text-slate-300">Volver</span>
+            </button>
+
+            <button
+              onClick={() => handleCommand('KEY_PRESS', { key: 'HOME' })}
+              className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800/90 active:scale-95 transition-all space-y-1"
+              title="Inicio Smart Hub"
+            >
+              <Home className="w-4 h-4" />
+              <span className="text-[10px] font-mono text-slate-300">Inicio</span>
+            </button>
+
+            <button
+              onClick={() => handleCommand('KEY_PRESS', { key: 'MENU' })}
+              className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800/90 active:scale-95 transition-all space-y-1"
+              title="Menú"
+            >
+              <Menu className="w-4 h-4" />
+              <span className="text-[10px] font-mono text-slate-300">Menú</span>
+            </button>
+
+            <button
+              onClick={() => handleCommand('KEY_PRESS', { key: 'KEY_INFO' })}
+              className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800/90 active:scale-95 transition-all space-y-1"
+              title="Info de Señal"
+            >
+              <Info className="w-4 h-4" />
+              <span className="text-[10px] font-mono text-slate-300">Info</span>
+            </button>
+          </div>
+
+          {/* 4. Grupo Volumen & Silenciar */}
+          <div className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                Volumen TV
+              </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handleCommand('TOGGLE_MUTE')}
+                  className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold transition-all ${
+                    selectedDevice?.isMuted
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  {selectedDevice?.isMuted ? 'MUTE ON' : 'MUTE'}
+                </button>
+                <span className="text-xs font-mono font-bold text-cyan-400 min-w-[32px] text-right">
+                  {volume}%
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
               <button
                 onClick={() => handleCommand('VOLUME_DOWN')}
-                className="p-1 rounded-lg text-slate-300 hover:bg-slate-800 active:scale-95"
+                className="p-1.5 rounded-lg bg-slate-950 text-slate-300 hover:bg-slate-800 border border-slate-800 active:scale-95"
                 title="Bajar volumen"
               >
                 <Volume1 className="w-3.5 h-3.5" />
@@ -925,126 +830,193 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
                 onChange={(e) => setVolume(Number(e.target.value))}
                 onMouseUp={() => handleCommand('SET_VOLUME', { volume })}
                 onTouchEnd={() => handleCommand('SET_VOLUME', { volume })}
-                className="w-20 sm:w-28 accent-cyan-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                className="flex-1 accent-cyan-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
               />
 
               <button
                 onClick={() => handleCommand('VOLUME_UP')}
-                className="p-1 rounded-lg text-slate-300 hover:bg-slate-800 active:scale-95"
+                className="p-1.5 rounded-lg bg-slate-950 text-slate-300 hover:bg-slate-800 border border-slate-800 active:scale-95"
                 title="Subir volumen"
               >
                 <Volume2 className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => handleCommand('TOGGLE_MUTE')}
-                className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold ${
-                  selectedDevice?.isMuted
-                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
-                }`}
-              >
-                {selectedDevice?.isMuted ? 'MUTE ON' : 'MUTE'}
-              </button>
-
-              <span className="text-cyan-400 font-bold min-w-[28px] text-right">
-                {volume}%
-              </span>
-            </div>
-
-            {/* Grupo Cruceta D-Pad & Navegación Compacta */}
-            <div className="flex items-center space-x-1.5">
-              <div className="flex items-center space-x-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
-                <button
-                  onClick={() => handleCommand('KEY_PRESS', { key: 'LEFT' })}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-200 active:scale-95"
-                  title="Izquierda"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5 text-cyan-400" />
-                </button>
-                <button
-                  onClick={() => handleCommand('KEY_PRESS', { key: 'UP' })}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-200 active:scale-95"
-                  title="Arriba"
-                >
-                  <ChevronUp className="w-3.5 h-3.5 text-cyan-400" />
-                </button>
-                <button
-                  onClick={() => handleCommand('KEY_PRESS', { key: 'ENTER' })}
-                  className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] active:scale-95"
-                  title="OK / Enter"
-                >
-                  OK
-                </button>
-                <button
-                  onClick={() => handleCommand('KEY_PRESS', { key: 'DOWN' })}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-200 active:scale-95"
-                  title="Abajo"
-                >
-                  <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
-                </button>
-                <button
-                  onClick={() => handleCommand('KEY_PRESS', { key: 'RIGHT' })}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-200 active:scale-95"
-                  title="Derecha"
-                >
-                  <ChevronRight className="w-3.5 h-3.5 text-cyan-400" />
-                </button>
-              </div>
-
-              {/* Botones Inicio, Menú, Volver */}
-              <button
-                onClick={() => handleCommand('KEY_PRESS', { key: 'HOME' })}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 active:scale-95"
-                title="Inicio Smart Hub"
-              >
-                <Home className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => handleCommand('KEY_PRESS', { key: 'MENU' })}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 active:scale-95"
-                title="Menú"
-              >
-                <Menu className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => handleCommand('KEY_PRESS', { key: 'BACK' })}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-purple-400 border border-slate-800 active:scale-95"
-                title="Volver"
-              >
-                <CornerDownLeft className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => handleCommand('KEY_PRESS', { key: 'KEY_INFO' })}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800 active:scale-95"
-                title="Info de Señal"
-              >
-                <Info className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         </div>
 
-        {/* Bottom Samsung Bezel with Standby LED & Logo */}
-        <div className="w-full pt-1.5 pb-2 flex items-center justify-between px-4 text-[10px] font-mono text-slate-500 bg-slate-950">
-          <span className="tracking-widest">SAMSUNG SMART TV 50" UHD</span>
+        {/* PANEL DERECHO: PANTALLA DE TRANSMISIÓN DE LA TV + TECLADO INFERIOR */}
+        <div
+          ref={tvContainerRef}
+          className="flex-1 min-w-0 relative rounded-3xl bg-slate-950 border-[6px] border-[#131b2c] shadow-[0_20px_60px_rgba(0,0,0,0.85)] overflow-hidden flex flex-col justify-between"
+        >
+          {/* 16:9 Screen Display Window */}
+          <div className="relative aspect-video w-full bg-black overflow-hidden flex items-center justify-center">
+            {!isPowerOn ? (
+              <div className="w-full h-full bg-[#05070c] flex flex-col items-center justify-center space-y-2">
+                <div className="w-14 h-14 rounded-full bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-600">
+                  <Power className="w-7 h-7 text-rose-500 animate-pulse" />
+                </div>
+                <div className="text-center">
+                  <h4 className="text-sm font-bold text-slate-300 font-mono">
+                    {selectedDevice?.name || 'Samsung Smart TV'} en Modo Standby
+                  </h4>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    Pantalla apagada. Pulsa "Encender" en el control izquierdo para activarla.
+                  </p>
+                </div>
+              </div>
+            ) : streamMode === 'HDMI_CAPTURE' || streamMode === 'SCREEN_CAPTURE' ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <canvas
+                ref={canvasRef}
+                width={1920}
+                height={1080}
+                className="w-full h-full object-contain"
+              />
+            )}
 
-          {/* Physical Standby LED Light */}
-          <div className="flex flex-col items-center space-y-0.5">
-            <span
-              className={`w-2.5 h-2.5 rounded-full shadow-lg transition-all ${
-                !isPowerOn
-                  ? 'bg-rose-500 shadow-rose-500/80 animate-pulse'
-                  : 'bg-cyan-500/40 shadow-cyan-500/20'
-              }`}
-            ></span>
-            <span className="text-[9px] text-slate-600">LED</span>
+            {/* Volume Slider OSD Overlay */}
+            {osdVolume.show && isPowerOn && (
+              <div className="absolute right-6 top-1/2 -translate-y-1/2 animate-in fade-in slide-in-from-right-4 duration-300 z-30">
+                <div className="p-3.5 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-cyan-500/40 text-white shadow-2xl flex flex-col items-center space-y-2.5 w-16">
+                  {osdVolume.muted ? (
+                    <VolumeX className="w-6 h-6 text-rose-400 animate-pulse" />
+                  ) : (
+                    <Volume2 className="w-6 h-6 text-cyan-400" />
+                  )}
+
+                  <div className="h-28 w-2.5 rounded-full bg-slate-800 overflow-hidden flex flex-col justify-end p-0.5">
+                    <div
+                      className="w-full rounded-full bg-gradient-to-t from-cyan-500 to-blue-400 transition-all duration-150"
+                      style={{ height: `${osdVolume.muted ? 0 : osdVolume.level}%` }}
+                    ></div>
+                  </div>
+
+                  <span className="text-[11px] font-mono font-bold text-cyan-300">
+                    {osdVolume.muted ? 'MUTE' : osdVolume.level}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Key Press HUD at Bottom Center of Screen Area */}
+            {osdKey.show && isPowerOn && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-30 pointer-events-none">
+                <div className="px-3.5 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-xl border border-slate-700 text-white shadow-2xl flex items-center space-x-2 text-xs font-mono">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                  <span className="text-slate-200 font-bold">{osdKey.keyName}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Laptop Keyboard Text OSD Banner */}
+            {osdText.show && isPowerOn && (
+              <div className="absolute top-1/4 left-1/2 -translate-x-1/2 animate-in fade-in zoom-in-95 duration-300 z-30 pointer-events-none max-w-[85%]">
+                <div className="px-5 py-3 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border border-cyan-400/60 text-white shadow-[0_15px_50px_rgba(6,182,212,0.4)] flex items-center space-x-3">
+                  <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex-shrink-0">
+                    <Keyboard className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 block font-bold">
+                      Texto escrito en la TV:
+                    </span>
+                    <span className="text-sm font-bold font-sans text-slate-100 truncate block">
+                      "{osdText.text}"
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <span>4K CRYSTAL PROCESSOR</span>
+          {/* BARRA DEL TECLADO INTEGRADA EN LA PARTE INFERIOR DE LA PANTALLA */}
+          <div className="w-full bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 p-3 z-30">
+            <div className="flex items-center space-x-2">
+              <div className="relative flex-1 flex items-center">
+                <Keyboard className="w-4 h-4 text-cyan-400 absolute left-3 pointer-events-none" />
+                <input
+                  ref={keyboardInputRef}
+                  type="text"
+                  placeholder="Escribe con el teclado de tu laptop y presiona Enter para escribir en la TV..."
+                  value={typedText}
+                  onChange={(e) => setTypedText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSendText();
+                    }
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 focus:border-cyan-400 rounded-xl pl-9 pr-24 py-2 text-xs text-slate-100 focus:outline-none font-sans placeholder-slate-500 shadow-inner"
+                />
+
+                <div className="absolute right-1.5 flex items-center space-x-1">
+                  {typedText && (
+                    <button
+                      onClick={() => {
+                        setTypedText('');
+                        keyboardInputRef.current?.focus();
+                      }}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                      title="Limpiar"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleSendText()}
+                    disabled={!typedText.trim() || isExecuting}
+                    className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white font-mono text-xs font-bold flex items-center space-x-1 shadow-md shadow-cyan-600/30 disabled:opacity-40 transition-all"
+                  >
+                    <Send className="w-3 h-3" />
+                    <span>Enviar</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Live Keyboard Passthrough Toggle Button */}
+              <button
+                onClick={() => {
+                  playTactileBeep(isKeyboardPassthrough ? 600 : 1100, 0.04);
+                  setIsKeyboardPassthrough(!isKeyboardPassthrough);
+                }}
+                className={`px-3 py-2 rounded-xl border text-xs font-mono font-bold flex items-center space-x-1.5 transition-all flex-shrink-0 ${
+                  isKeyboardPassthrough
+                    ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/60 shadow-lg shadow-emerald-950'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border-slate-700'
+                }`}
+                title="Cualquier tecla de tu laptop (letras, flechas, Enter) se transmite a la TV"
+              >
+                <Keyboard className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{isKeyboardPassthrough ? '🟢 En Vivo: ON' : '⌨️ Modo Teclado'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom Samsung Bezel with Standby LED & Logo */}
+          <div className="w-full pt-1.5 pb-2 flex items-center justify-between px-4 text-[10px] font-mono text-slate-500 bg-slate-950">
+            <span className="tracking-widest">SAMSUNG SMART TV 50" UHD</span>
+
+            {/* Physical Standby LED Light */}
+            <div className="flex flex-col items-center space-y-0.5">
+              <span
+                className={`w-2.5 h-2.5 rounded-full shadow-lg transition-all ${
+                  !isPowerOn
+                    ? 'bg-rose-500 shadow-rose-500/80 animate-pulse'
+                    : 'bg-cyan-500/40 shadow-cyan-500/20'
+                }`}
+              ></span>
+              <span className="text-[9px] text-slate-600">LED</span>
+            </div>
+
+            <span>4K CRYSTAL PROCESSOR</span>
+          </div>
         </div>
       </div>
 

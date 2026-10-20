@@ -88,8 +88,8 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* User Info & Actions */}
-      <div className="flex items-center space-x-4">
+      {/* System Access Badge */}
+      <div className="flex items-center space-x-3">
         {user && (
           <div className="flex items-center space-x-3">
             <div className="text-right hidden sm:block">
@@ -99,7 +99,7 @@ export const Navbar: React.FC = () => {
                   user.role
                 )}`}
               >
-                {user.role}
+                ACCESO DIRECTO
               </span>
             </div>
             <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs">
@@ -107,14 +107,6 @@ export const Navbar: React.FC = () => {
             </div>
           </div>
         )}
-
-        <button
-          onClick={logout}
-          title="Cerrar Sesión"
-          className="p-2 rounded-lg bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-900/50 transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
       </div>
     </header>
   );

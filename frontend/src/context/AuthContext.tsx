@@ -13,48 +13,28 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const DEFAULT_ADMIN_USER: User = {
+  id: 'admin-local',
+  username: 'admin',
+  role: 'ADMIN',
+  email: 'admin@controltv.lan',
+  fullName: 'Operador NOC',
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('controltv_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('controltv_token');
-  });
+  const [user] = useState<User | null>(DEFAULT_ADMIN_USER);
+  const [token] = useState<string | null>('direct-access-token');
 
-  useEffect(() => {
-    const handleLogoutEvent = () => {
-      logout();
-    };
-    window.addEventListener('auth_logout', handleLogoutEvent);
-    return () => window.removeEventListener('auth_logout', handleLogoutEvent);
-  }, []);
-
-  const login = async (username: string, password: string): Promise<boolean> => {
-    try {
-      const data = await authApi.login(username, password);
-      setToken(data.token);
-      setUser(data.user);
-      localStorage.setItem('controltv_token', data.token);
-      localStorage.setItem('controltv_user', JSON.stringify(data.user));
-      return true;
-    } catch (err: any) {
-      console.error('Login error:', err);
-      return false;
-    }
+  const login = async (_username: string, _password: string): Promise<boolean> => {
+    return true;
   };
 
   const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('controltv_token');
-    localStorage.removeItem('controltv_user');
+    // Login disabled: direct access mode
   };
 
-  const hasRole = (roles: UserRole[]): boolean => {
-    if (!user) return false;
-    if (user.role === 'ADMIN') return true; // Admin has all rights
-    return roles.includes(user.role);
+  const hasRole = (_roles: UserRole[]): boolean => {
+    return true;
   };
 
   return (
@@ -62,7 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         token,
-        isAuthenticated: !!token && !!user,
+        isAuthenticated: true,
         login,
         logout,
         hasRole,

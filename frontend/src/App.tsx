@@ -9,18 +9,12 @@ import { DeviceManager } from './components/DeviceManager.js';
 import { NetworkScanner } from './components/NetworkScanner.js';
 import { AuditLogViewer } from './components/AuditLogViewer.js';
 import { DocsGuide } from './components/DocsGuide.js';
-import { LoginView } from './components/LoginView.js';
 import { Device } from './types/index.js';
 
 const MainApp: React.FC = () => {
-  const { isAuthenticated } = useAuth();
   const { devices } = useDevices();
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [activeRemoteDevice, setActiveRemoteDevice] = useState<Device | null>(null);
-
-  if (!isAuthenticated) {
-    return <LoginView />;
-  }
 
   const handleOpenRemote = (device: Device) => {
     setActiveRemoteDevice(device);

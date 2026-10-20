@@ -11,8 +11,8 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const navItems = [
     { id: 'dashboard' as NavTab, label: 'Dashboard NOC', icon: LayoutDashboard },
+    { id: 'devices' as NavTab, label: 'Gestión de Pantallas', icon: Radio },
     { id: 'remote' as NavTab, label: 'Control & Vista Remota', icon: Tv },
-    { id: 'devices' as NavTab, label: 'Gestión Pantallas', icon: Radio },
     { id: 'discovery' as NavTab, label: 'Escáner de Red', icon: Radar },
     { id: 'audit' as NavTab, label: 'Auditoría & Comandos', icon: History },
     { id: 'docs' as NavTab, label: 'Arquitectura & Info', icon: FileText },
