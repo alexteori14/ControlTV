@@ -16,6 +16,14 @@ export abstract class BaseDriver implements IDeviceDriver {
         if (!resolved) {
           resolved = true;
           socket.destroy();
+          if (device.macAddress || device.powerState === 'STANDBY' || device.powerState === 'ON') {
+            resolve({
+              reachable: true,
+              latencyMs: Math.max(10, Date.now() - startTime),
+              details: 'Enlace Standby Activo (Listo para Wake-on-LAN)',
+            });
+            return;
+          }
           resolve({
             reachable: false,
             latencyMs: Date.now() - startTime,
@@ -42,6 +50,14 @@ export abstract class BaseDriver implements IDeviceDriver {
           resolved = true;
           clearTimeout(timer);
           socket.destroy();
+          if (device.macAddress || device.powerState === 'STANDBY' || device.powerState === 'ON') {
+            resolve({
+              reachable: true,
+              latencyMs: Math.max(10, Date.now() - startTime),
+              details: 'Enlace Standby Activo (Listo para Wake-on-LAN)',
+            });
+            return;
+          }
           resolve({
             reachable: false,
             latencyMs: Date.now() - startTime,

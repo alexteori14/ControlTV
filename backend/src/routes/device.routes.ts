@@ -146,6 +146,7 @@ router.post('/:id/ping', authenticateJwt, async (req, res) => {
       reachable: connectivity.reachable,
       latencyMs: connectivity.latencyMs,
       error: connectivity.error,
+      details: connectivity.details,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

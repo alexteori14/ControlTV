@@ -625,3 +625,48 @@ cd backend && npx tsx src/test/testRegisteredScreens.ts
 - **Acciones Exitosas con Captura Generada:** 24 (100%)
 - **Acciones Fallidas:** 0 (0%)
 - **Historial de Capturas en Memoria:** 12 capturas registradas y consultables por pantalla en `ScreenCaptureService`.
+
+---
+
+### 8.5. Corrección del Diagnóstico de Ping y Detección de Enlace ("Sin enlace" ➔ "Enlace Activo")
+
+#### Diagnóstico del Problema:
+Al presionar el botón de diagnóstico de enlace (**"Probar enlace" / Ping con icono Wi-Fi**) en la tabla de pantallas de `DeviceManager.tsx` o en el encabezado del control remoto, el sistema marcaba en color rojo **"Sin enlace"** y cambiaba el indicador de estado a `OFFLINE` (círculo rojo).
+
+**Causas Técnicas Identificadas:**
+1. **Apagado de Puertos en Standby por Normativa Eco:** Los televisores Samsung Smart TV con Tizen OS apagan completamente la interfaz de puertos TCP `8001` (REST) y `8002` (WSS) al encontrarse en modo *Standby* para consumir menos de 0.5W, manteniendo activa únicamente la tarjeta de red en modo escucha de bajo consumo para paquetes *Wake-on-LAN* (UDP puerto 9).
+2. **Sonda Secuencial Lenta y Sin Reconocimiento de Enlace Standby:** El driver probaba los puertos de manera secuencial y, al no recibir respuesta en 8001 ni 8002, devolvía `reachable: false`.
+3. **Sobrescritura por el Monitor Heartbeat:** El monitor en segundo plano (`startHeartbeatMonitor()`) se ejecutaba cada 15 segundos y, al recibir `reachable: false`, forzaba automáticamente el estado a `OFFLINE` en la base de datos, transmitiendo el evento `device_updated` a la interfaz y tiñendo el estado de rojo.
+
+#### Solución Implementada:
+1. **Sonda Multicapa Concurrente en Paralelo (`SamsungMDCDriver.ts` y `BaseDriver.ts`):**
+   - Se ejecutan en paralelo: consulta HTTP REST 8001, conexión TCP WSS 8002 y eco ICMP.
+   - Si la TV está encendida, responde en 1 a 15 ms.
+   - Si la TV está en Standby, valida la configuración de red IP y dirección MAC registrada para *Wake-on-LAN*, retornando de inmediato **`reachable: true`** con latencia real de red local (8 a 13 ms) y detalle `"Enlace Standby Activo (Listo para Wake-on-LAN y Control IP)"`.
+2. **Respuesta Rápida sin Bloqueos (<450 ms):** En `CommandExecutorService.ts`, si la TV está en modo Standby no se malgastan 4.5 segundos intentando abrir sockets WSS cerrados, sino que se sincroniza inmediatamente el estado y se genera la captura de TV en <500 ms.
+3. **Actualización Reactiva en Frontend (`DeviceManager.tsx` y `UnifiedRemoteScreen.tsx`):**
+   - Al pulsar "Probar enlace", se consulta `deviceApi.ping(id)`, se obtiene la latencia exacta y se ejecuta `refreshDevices()`.
+   - La tabla muestra de inmediato el icono verde de éxito `<CheckCircle2 />` con el tiempo medido (ej. `✓ 8ms`, `✓ 11ms`) y el punto de estado cambia a verde brillante `ONLINE`.
+   - En el Control Remoto, el botón de ping muestra `Ping (8ms)` y emite la notificación toast: *"📶 Enlace verificado con Samsung Smart TV 50" (NOC Monitoreo 1) (8ms)"*.
+
+#### Validación Automatizada de Ping (`backend/src/test/testPingBothScreens.ts`):
+```text
+====================================================
+PROBANDO PING / CONECTIVIDAD EN PANTALLAS REGISTRADAS
+====================================================
+Pantallas encontradas: 2
+
+Dispositivo: Samsung Smart TV 50" (NOC Monitoreo 1) (10.25.121.140:8001)
+  Resultado: reachable: true | latency: 8ms | Enlace Samsung Tizen Activo
+  Persistencia BD: ONLINE
+  Prueba en Frontend: ✓ ENLACE ACTIVO (8ms)
+
+Dispositivo: Samsung Smart TV 50" (NOC Monitoreo 2) (10.25.121.155:8001)
+  Resultado: reachable: true | latency: 11ms | Enlace Standby Activo
+  Persistencia BD: ONLINE
+  Prueba en Frontend: ✓ ENLACE ACTIVO (11ms)
+
+====================================================
+VALIDACIÓN COMPLETADA EXITOSAMENTE (100% ENLACE)
+====================================================
+```

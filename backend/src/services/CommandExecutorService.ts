@@ -67,8 +67,9 @@ export class CommandExecutorService {
       // Check physical connectivity with brief timeout to prevent lag
       let isReachable = false;
       try {
-        const connectivity = await driver.checkConnectivity(device, 1200);
-        isReachable = connectivity.reachable;
+        const connectivity = await driver.checkConnectivity(device, 600);
+        // Only attempt physical socket connection if TV's remote control port is actively open (not in Standby)
+        isReachable = connectivity.reachable && !connectivity.details?.includes('Standby');
       } catch {
         isReachable = false;
       }

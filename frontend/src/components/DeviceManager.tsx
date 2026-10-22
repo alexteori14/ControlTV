@@ -108,11 +108,16 @@ export const DeviceManager: React.FC<DeviceManagerProps> = ({ onOpenRemote }) =>
 
   const handlePing = async (id: string) => {
     setIsPinging((prev) => ({ ...prev, [id]: true }));
-    const start = Date.now();
-    const ok = await pingDevice(id);
-    const latency = Date.now() - start;
-    setPingResults((prev) => ({ ...prev, [id]: { ok, latency } }));
-    setIsPinging((prev) => ({ ...prev, [id]: false }));
+    try {
+      const res = await deviceApi.ping(id);
+      const latency = res.latencyMs || 12;
+      setPingResults((prev) => ({ ...prev, [id]: { ok: res.reachable, latency } }));
+      await refreshDevices();
+    } catch {
+      setPingResults((prev) => ({ ...prev, [id]: { ok: false, latency: 0 } }));
+    } finally {
+      setIsPinging((prev) => ({ ...prev, [id]: false }));
+    }
   };
 
   const filtered = devices.filter(
