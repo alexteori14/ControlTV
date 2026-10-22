@@ -20,6 +20,7 @@ graph TD
         API_Gateway["API REST Gateway & Auth JWT"]
         WS_Hub["WebSocket Hub (Socket.IO)"]
         Cmd_Engine["Motor Validador & Ejecutor de Comandos"]
+        Cap_Engine["Motor de Capturas de Pantalla de TV (ScreenCaptureService)"]
         Scanner_Engine["Escáner de Red Local (ARP / Port Probing)"]
         Heartbeat_Svc["Monitor de Telemetría & Heartbeat (15s)"]
         Sim_Server["Servidor Emulador Smart TV (TCP 9099)"]
@@ -54,6 +55,7 @@ graph TD
     API_Gateway --> Cmd_Engine
     API_Gateway --> Scanner_Engine
     Cmd_Engine --> Drivers
+    Cmd_Engine --> Cap_Engine
     Heartbeat_Svc --> Drivers
     Drivers -- "TCP / UDP / HTTP" --> Displays
     Backend --> DB_Postgres
@@ -68,13 +70,15 @@ graph TD
 - **Framework:** React 19 + TypeScript 5.
 - **Estilos:** Tailwind CSS v4 + variables CSS para tema oscuro industrial (#0b0f19) + Material UI.
 - **Gráficos en tiempo real:** Recharts (Series temporales de temperatura interna del chasis y latencia de ping).
-- **Comunicación en vivo:** Socket.IO Client para actualización instantánea de estados sin recargar página.
-- **Captura de Pantalla:** Web Screen Capture API (`navigator.mediaDevices.getDisplayMedia`) para interconectar PCs intermedias o capturadoras de video HDMI-USB.
+- **Comunicación en vivo:** Socket.IO Client para actualización instantánea de estados y recepción del evento `screen_captured` tras cada acción remota.
+- **Motor de Capturas de Pantalla en Vivo:** En lugar de imágenes estáticas o lienzos abstractos, el monitor despliega la captura real de la televisión tras cada comando (Encendido, Standby con LED rojo, OSD de volumen, silencio, conmutación de entradas, teclado laptop y navegación D-Pad) junto con un carrete histórico de miniaturas y descarga en PNG/SVG.
+- **Captura de Video Híbrida:** Soporte para dongles capturadores HDMI USB vía `getUserMedia` y compartición de escritorio vía `getDisplayMedia`.
 
 ### 2.2 Capa de Negocio y Control (Backend)
 - **Runtime:** Node.js v24 LTS + Express.
 - **Seguridad:** Helmet, CORS restrictivo, autenticación Bearer JWT con RBAC (Control de Acceso Basado en Roles).
 - **Validación previa obligatoria:** Antes de emitir cualquier comando remoto (salvo WoL), el sistema comprueba la conectividad TCP activa en menos de 2500ms. Si la pantalla no responde, el comando se aborta para prevenir cuelgues y se marca OFFLINE.
+- **Motor de Captura Automática (`ScreenCaptureService`):** Orquesta la toma de capturas fotográficas en 1080p/4K de la televisión en el momento exacto en que se ejecuta cada acción, embebiendo la captura en el `CommandResult` y difundiéndola vía WebSockets.
 - **Patrón Factory para Drivers:** `DriverFactory.getDriver(device)` desacopla el modelo de datos de la lógica de red binaria de cada fabricante.
 
 ### 2.3 Capa de Protocolos de Red (Hardware Drivers)

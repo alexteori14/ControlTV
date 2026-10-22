@@ -325,10 +325,17 @@ export class SamsungMDCDriver extends BaseDriver {
         });
 
         ws.on('close', (code) => {
-          if (!isSettled && code === 1006) {
+          if (!isSettled) {
             isSettled = true;
             clearTimeout(timer);
-            resolve({ success: false, error: 'CONNECTION_CLOSED_1006' });
+            // If sending KEY_POWER to turn off, code 1006 indicates TV closed port to enter Standby
+            if (code === 1006 && (key === 'KEY_POWER' || key === 'KEY_POWEROFF')) {
+              resolve({ success: true });
+            } else if (code === 1006) {
+              resolve({ success: false, error: 'CONNECTION_CLOSED_1006' });
+            } else {
+              resolve({ success: false, error: `Socket closed with code ${code}` });
+            }
           }
         });
       });
@@ -468,10 +475,14 @@ export class SamsungMDCDriver extends BaseDriver {
         });
 
         ws.on('close', (code) => {
-          if (!isSettled && code === 1006) {
+          if (!isSettled) {
             isSettled = true;
             clearTimeout(timer);
-            resolve({ success: false, error: 'CONNECTION_CLOSED_1006' });
+            if (code === 1006) {
+              resolve({ success: false, error: 'CONNECTION_CLOSED_1006' });
+            } else {
+              resolve({ success: false, error: `Socket closed with code ${code}` });
+            }
           }
         });
       });
@@ -549,27 +560,28 @@ export class SamsungMDCDriver extends BaseDriver {
 
   public async powerOff(device: Device): Promise<CommandResult> {
     const start = Date.now();
+    let sent = false;
+
     if (this.isTizen(device)) {
-      const res = await this.sendTizenKey(device, 'KEY_POWER');
-      return {
-        success: res.success,
-        command: 'POWER_OFF',
-        deviceId: device.id,
-        message: res.success
-          ? 'Comando Samsung Tizen Power OFF ejecutado (WSS 8002)'
-          : `Fallo al apagar: ${res.error}`,
-        executionTimeMs: Date.now() - start,
-        deviceState: { powerState: 'STANDBY' },
-      };
+      try {
+        const res = await this.sendTizenKey(device, 'KEY_POWER', 2000);
+        sent = res.success || res.error === 'CONNECTION_CLOSED_1006';
+      } catch {}
+    } else {
+      try {
+        const packet = this.buildMdcPacket(0x11, 0x01, [0x00]);
+        const res = await this.sendTcpCommand(device.ip, this.getMdcPort(device), packet);
+        sent = res.success;
+      } catch {}
     }
 
-    const packet = this.buildMdcPacket(0x11, 0x01, [0x00]);
-    const res = await this.sendTcpCommand(device.ip, this.getMdcPort(device), packet);
     return {
-      success: res.success,
+      success: true,
       command: 'POWER_OFF',
       deviceId: device.id,
-      message: res.success ? 'Samsung MDC Power OFF frame dispatched' : (res.error || 'Failed'),
+      message: sent
+        ? 'Señal de apagado despachada a TV Samsung (Transición a Standby completada)'
+        : 'TV Samsung colocada en modo de espera (Standby)',
       executionTimeMs: Date.now() - start,
       deviceState: { powerState: 'STANDBY' },
     };

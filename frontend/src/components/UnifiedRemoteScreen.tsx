@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useDevices } from '../context/DeviceContext.js';
-import { Device, CommandType } from '../types/index.js';
+import { Device, CommandType, ScreenCapture } from '../types/index.js';
+import { controlApi } from '../services/api.js';
 import {
   Power,
   RotateCcw,
@@ -26,9 +27,16 @@ import {
   Send,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   Keyboard,
   X,
+  Download,
+  Clock,
+  History,
+  Layers,
+  Check,
+  Radio,
+  Sliders,
+  ExternalLink,
 } from 'lucide-react';
 
 interface UnifiedRemoteScreenProps {
@@ -36,7 +44,7 @@ interface UnifiedRemoteScreenProps {
 }
 
 export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initialDevice }) => {
-  const { devices, executeCommand, pingDevice, lastCommandResult } = useDevices();
+  const { devices, executeCommand, pingDevice, latestCapture } = useDevices();
 
   // Selected TV state
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(
@@ -68,16 +76,28 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
     }
   }, [selectedDevice?.id, selectedDevice?.volume]);
 
-  // Video Streaming States (ONLY TV -> Laptop)
-  const [streamMode, setStreamMode] = useState<'DIGITAL_TWIN' | 'HDMI_CAPTURE' | 'SCREEN_CAPTURE'>('DIGITAL_TWIN');
+  // Video Streaming States (TV -> Laptop)
+  const [streamMode, setStreamMode] = useState<'TV_CAPTURE' | 'HDMI_CAPTURE' | 'SCREEN_CAPTURE'>('TV_CAPTURE');
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string>('');
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
 
-  // Laptop Keyboard Writing States (Clean bar without search shortcuts)
+  // =========================================================================
+  // SCREEN CAPTURE ENGINE STATES (Capturas reales tras cada acción del control)
+  // =========================================================================
+  const [activeCaptureUrl, setActiveCaptureUrl] = useState<string | null>(null);
+  const [activeCaptureTime, setActiveCaptureTime] = useState<string | null>(null);
+  const [lastActionLabel, setLastActionLabel] = useState<string>('Sincronizado');
+  const [captureHistory, setCaptureHistory] = useState<ScreenCapture[]>([]);
+  const [isShutterFlashing, setIsShutterFlashing] = useState<boolean>(false);
+  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState<boolean>(true);
+  const [lastCaptureToast, setLastCaptureToast] = useState<string | null>(null);
+  const [previewCapture, setPreviewCapture] = useState<ScreenCapture | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  // Laptop Keyboard Writing States
   const [typedText, setTypedText] = useState('');
   const [isKeyboardPassthrough, setIsKeyboardPassthrough] = useState(false);
   const [lastSentText, setLastSentText] = useState<string | null>(null);
@@ -132,6 +152,14 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
     }
   }, []);
 
+  // Trigger camera shutter flash effect
+  const triggerShutterFlash = useCallback(() => {
+    setIsShutterFlashing(true);
+    window.setTimeout(() => {
+      setIsShutterFlashing(false);
+    }, 280);
+  }, []);
+
   // Trigger Samsung TV OSD notifications
   const triggerOsdVolume = useCallback((newVol: number, isMuted: boolean) => {
     if (osdVolumeTimerRef.current) clearTimeout(osdVolumeTimerRef.current);
@@ -157,75 +185,141 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
     }, 3800);
   }, []);
 
-  // Dispatch text from laptop keyboard to the TV (Samsung Tizen IME)
-  const handleSendText = async (textToSend?: string) => {
-    const text = (textToSend !== undefined ? textToSend : typedText).trim();
-    if (!text || !selectedDevice) return;
+  const showCaptureNotification = useCallback((message: string) => {
+    setLastCaptureToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setLastCaptureToast(null);
+    }, 3200);
+  }, []);
 
-    playTactileBeep(950, 0.05);
-    setIsExecuting(true);
-    setLastSentText(text);
-    triggerOsdText(text);
-
-    await executeCommand(selectedDevice.id, 'SEND_TEXT', { text });
-    setIsExecuting(false);
-    if (textToSend === undefined) {
-      setTypedText('');
+  // Helper: Format human-readable action label
+  const describeAction = (cmd: CommandType, payload?: any): string => {
+    switch (cmd) {
+      case 'POWER_ON':
+        return 'Encender (POWER_ON)';
+      case 'POWER_OFF':
+        return 'Apagar (STANDBY)';
+      case 'RESTART':
+        return 'Reiniciar Sistema';
+      case 'VOLUME_UP':
+        return 'Subir Volumen (+5%)';
+      case 'VOLUME_DOWN':
+        return 'Bajar Volumen (-5%)';
+      case 'SET_VOLUME':
+        return `Ajustar Volumen (${payload?.volume ?? 25}%)`;
+      case 'TOGGLE_MUTE':
+        return 'Alternar Silencio (MUTE)';
+      case 'MUTE':
+        return 'Silenciar Audio (MUTE)';
+      case 'UNMUTE':
+        return 'Reactivar Audio';
+      case 'SET_INPUT':
+        return `Cambiar Entrada (${payload?.input || 'HDMI1'})`;
+      case 'SET_CHANNEL':
+        return `Sintonizar Canal (${payload?.channel || '05'})`;
+      case 'KEY_PRESS':
+        return `Tecla: ${payload?.key || 'ENTER'}`;
+      case 'SEND_TEXT':
+        return `Texto: "${payload?.text || ''}"`;
+      default:
+        return String(cmd);
     }
   };
 
-  // Real-time Laptop Keyboard Listener (Passthrough mode)
+  // -------------------------------------------------------------------------
+  // INITIAL CAPTURE FETCHING & WEBSOCKET SYNC
+  // -------------------------------------------------------------------------
   useEffect(() => {
-    if (!isKeyboardPassthrough || !selectedDevice) return;
+    if (!selectedDevice) return;
+    let isMounted = true;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
-
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        handleCommand('KEY_PRESS', { key: 'UP' });
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        handleCommand('KEY_PRESS', { key: 'DOWN' });
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        handleCommand('KEY_PRESS', { key: 'LEFT' });
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        handleCommand('KEY_PRESS', { key: 'RIGHT' });
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        handleCommand('KEY_PRESS', { key: 'ENTER' });
-      } else if (e.key === 'Backspace') {
-        e.preventDefault();
-        handleCommand('KEY_PRESS', { key: 'BACK' });
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        handleCommand('KEY_PRESS', { key: 'BACK' });
-      } else if (e.key === 'Home') {
-        e.preventDefault();
-        handleCommand('KEY_PRESS', { key: 'HOME' });
-      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        e.preventDefault();
-        handleSendText(e.key);
+    const loadInitialCapture = async () => {
+      try {
+        const cap = await controlApi.getScreenshot(selectedDevice.id);
+        if (isMounted && cap?.screenshot) {
+          setActiveCaptureUrl(cap.screenshot);
+          setActiveCaptureTime(new Date(cap.timestamp).toLocaleTimeString('es-MX', { hour12: false }));
+          setLastActionLabel(`Estado Actual (${cap.command || 'EN VIVO'})`);
+        }
+        const hist = await controlApi.getCaptures(selectedDevice.id);
+        if (isMounted && hist && hist.length > 0) {
+          setCaptureHistory(hist);
+        }
+      } catch (e) {
+        console.warn('No se pudo precargar la captura de la TV:', e);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    loadInitialCapture();
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      isMounted = false;
     };
-  }, [isKeyboardPassthrough, selectedDevice]);
+  }, [selectedDevice?.id]);
 
-  // Execute remote commands and trigger corresponding TV Screen OSD
+  // Sync when server broadcasts new TV screen capture
+  useEffect(() => {
+    if (latestCapture && latestCapture.deviceId === selectedDevice?.id) {
+      setActiveCaptureUrl(latestCapture.screenshot);
+      setActiveCaptureTime(new Date(latestCapture.timestamp).toLocaleTimeString('es-MX', { hour12: false }));
+      setLastActionLabel(`Acción: ${latestCapture.command}`);
+      setCaptureHistory((prev) => {
+        if (prev.some((c) => c.id === latestCapture.id)) return prev;
+        return [latestCapture, ...prev.slice(0, 24)];
+      });
+    }
+  }, [latestCapture, selectedDevice?.id]);
+
+  // Capture frame from active HDMI/Screen video stream
+  const captureFrameFromVideo = useCallback(
+    (actionLabel: string) => {
+      if (!videoRef.current) return;
+      try {
+        const snapCanvas = document.createElement('canvas');
+        snapCanvas.width = videoRef.current.videoWidth || 1920;
+        snapCanvas.height = videoRef.current.videoHeight || 1080;
+        const ctx = snapCanvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(videoRef.current, 0, 0, snapCanvas.width, snapCanvas.height);
+          const dataUrl = snapCanvas.toDataURL('image/png');
+          setActiveCaptureUrl(dataUrl);
+          const timeStr = new Date().toLocaleTimeString('es-MX', { hour12: false });
+          setActiveCaptureTime(timeStr);
+          setLastActionLabel(actionLabel);
+
+          const newCap: ScreenCapture = {
+            id: String(Date.now()),
+            deviceId: selectedDevice?.id || 'tv',
+            deviceName: selectedDevice?.name,
+            command: actionLabel,
+            screenshot: dataUrl,
+            width: snapCanvas.width,
+            height: snapCanvas.height,
+            timestamp: new Date().toISOString(),
+            source: 'HDMI_CAPTURE',
+          };
+          setCaptureHistory((prev) => [newCap, ...prev.slice(0, 24)]);
+          showCaptureNotification(`📸 Captura HDMI tomada: ${actionLabel}`);
+        }
+      } catch (err) {
+        console.warn('Error al capturar fotograma de video:', err);
+      }
+    },
+    [selectedDevice, showCaptureNotification]
+  );
+
+  // -------------------------------------------------------------------------
+  // EXECUTE COMMAND AND AUTOMATICALLY CAPTURE TELEVISION SCREEN
+  // -------------------------------------------------------------------------
   const handleCommand = async (command: CommandType, payload?: any) => {
     if (!selectedDevice) return;
     playTactileBeep();
     setIsExecuting(true);
 
+    const actionText = describeAction(command, payload);
+    setLastActionLabel(actionText);
+
+    // OSD Popups
     if (command === 'VOLUME_UP') {
       const next = Math.min(100, (selectedDevice.volume ?? 25) + 1);
       setVolume(next);
@@ -254,9 +348,123 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
       triggerOsdKey(keyLabelMap[payload.key] || `Tecla: ${payload.key}`);
     }
 
-    await executeCommand(selectedDevice.id, command, payload);
+    if (autoCaptureEnabled) {
+      triggerShutterFlash();
+    }
+
+    // Execute remote command
+    const res = await executeCommand(selectedDevice.id, command, payload);
     setIsExecuting(false);
+
+    // Process screen capture
+    if (autoCaptureEnabled) {
+      if (isCapturing && (streamMode === 'HDMI_CAPTURE' || streamMode === 'SCREEN_CAPTURE')) {
+        // Allow physical TV display pipeline 380ms to refresh
+        window.setTimeout(() => {
+          captureFrameFromVideo(actionText);
+        }, 400);
+      } else if (res?.screenshot) {
+        const timeStr = new Date().toLocaleTimeString('es-MX', { hour12: false });
+        setActiveCaptureUrl(res.screenshot);
+        setActiveCaptureTime(timeStr);
+        const newCap: ScreenCapture = {
+          id: String(Date.now()),
+          deviceId: selectedDevice.id,
+          deviceName: selectedDevice.name,
+          command,
+          screenshot: res.screenshot,
+          width: 1920,
+          height: 1080,
+          timestamp: res.screenshotTimestamp || new Date().toISOString(),
+          source: 'TV_HARDWARE_RENDER',
+        };
+        setCaptureHistory((prev) => [newCap, ...prev.slice(0, 24)]);
+        showCaptureNotification(`📸 Captura de TV guardada tras: ${actionText}`);
+      }
+    }
   };
+
+  // Dispatch text from laptop keyboard to the TV (Samsung Tizen IME)
+  const handleSendText = async (textToSend?: string) => {
+    const text = (textToSend !== undefined ? textToSend : typedText).trim();
+    if (!text || !selectedDevice) return;
+
+    setLastSentText(text);
+    triggerOsdText(text);
+    if (textToSend === undefined) {
+      setTypedText('');
+    }
+    await handleCommand('SEND_TEXT', { text });
+  };
+
+  // Manual on-demand capture button
+  const handleManualCapture = async () => {
+    if (!selectedDevice) return;
+    playTactileBeep(1100, 0.05);
+    triggerShutterFlash();
+
+    if (isCapturing && (streamMode === 'HDMI_CAPTURE' || streamMode === 'SCREEN_CAPTURE')) {
+      captureFrameFromVideo('Captura Manual');
+      return;
+    }
+
+    try {
+      const cap = await controlApi.takeCapture(selectedDevice.id);
+      if (cap?.screenshot) {
+        setActiveCaptureUrl(cap.screenshot);
+        const timeStr = new Date(cap.timestamp).toLocaleTimeString('es-MX', { hour12: false });
+        setActiveCaptureTime(timeStr);
+        setLastActionLabel('Captura Manual');
+        setCaptureHistory((prev) => [cap, ...prev.slice(0, 24)]);
+        showCaptureNotification('📸 Captura manual de la TV tomada con éxito');
+      }
+    } catch (err: any) {
+      console.warn('Error en captura manual:', err);
+    }
+  };
+
+  // Real-time Laptop Keyboard Listener (Passthrough mode)
+  useEffect(() => {
+    if (!isKeyboardPassthrough || !selectedDevice) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        handleCommand('KEY_PRESS', { key: 'UP' });
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        handleCommand('KEY_PRESS', { key: 'DOWN' });
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleCommand('KEY_PRESS', { key: 'LEFT' });
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleCommand('KEY_PRESS', { key: 'RIGHT' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleCommand('KEY_PRESS', { key: 'ENTER' });
+      } else if (e.key === 'Backspace' || e.key === 'Escape') {
+        e.preventDefault();
+        handleCommand('KEY_PRESS', { key: 'BACK' });
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        handleCommand('KEY_PRESS', { key: 'HOME' });
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        handleSendText(e.key);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isKeyboardPassthrough, selectedDevice]);
 
   const handlePing = async () => {
     if (!selectedDevice) return;
@@ -300,6 +508,7 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       }
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
 
@@ -380,69 +589,8 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
       videoRef.current.srcObject = null;
     }
     setIsCapturing(false);
-    setStreamMode('DIGITAL_TWIN');
+    setStreamMode('TV_CAPTURE');
   };
-
-  // Dynamic Interactive TV Screen Canvas (Smart TV UI: see where you're looking & what you're typing)
-  useEffect(() => {
-    if (streamMode !== 'DIGITAL_TWIN' || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let frameId: number;
-    let step = 0;
-
-    const render = () => {
-      const width = canvas.width;
-      const height = canvas.height;
-
-      // Dark background gradient
-      const bgGradient = ctx.createLinearGradient(0, 0, width, height);
-      bgGradient.addColorStop(0, '#0a1124');
-      bgGradient.addColorStop(0.4, '#060a16');
-      bgGradient.addColorStop(1, '#020409');
-      ctx.fillStyle = bgGradient;
-      ctx.fillRect(0, 0, width, height);
-
-      // Subtle dynamic ambient wave background
-      ctx.strokeStyle = 'rgba(6, 182, 212, 0.12)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let x = 0; x < width; x += 12) {
-        const y = height / 2 + Math.sin((x + step * 3) * 0.012) * 35;
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // Subtle header info in corners (unobstructed, no blocking bars)
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.7)';
-      ctx.font = 'bold 22px "Segoe UI", Roboto, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText(
-        `${selectedDevice?.name || 'SAMSUNG SMART TV'}`,
-        70,
-        70
-      );
-
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString('es-MX', { hour12: false });
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
-      ctx.font = '18px monospace';
-      ctx.textAlign = 'right';
-      ctx.fillText(`${timeStr}`, width - 70, 70);
-
-      step++;
-      frameId = requestAnimationFrame(render);
-    };
-
-    render();
-    return () => {
-      cancelAnimationFrame(frameId);
-    };
-  }, [streamMode, selectedDevice, pingLatency, lastSentText, typedText]);
 
   // Fullscreen toggle
   const toggleFullscreen = () => {
@@ -456,40 +604,24 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
     }
   };
 
-  // Instant Snapshot
-  const captureSnapshot = () => {
-    playTactileBeep(1000, 0.05);
-    if (streamMode === 'DIGITAL_TWIN' && canvasRef.current) {
-      setSnapshotUrl(canvasRef.current.toDataURL('image/png'));
-    } else if (videoRef.current) {
-      const snapCanvas = document.createElement('canvas');
-      snapCanvas.width = videoRef.current.videoWidth || 1920;
-      snapCanvas.height = videoRef.current.videoHeight || 1080;
-      const ctx = snapCanvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0, snapCanvas.width, snapCanvas.height);
-        setSnapshotUrl(snapCanvas.toDataURL('image/png'));
-      }
-    }
-  };
-
   return (
-    <div className="space-y-4 max-w-6xl mx-auto">
-      {/* Top Header Bar: Screen Selector, Real-Time Status & Tools */}
+    <div className="space-y-4 max-w-7xl mx-auto">
+      {/* Top Header Bar: Screen Selector, Real-Time Status & Capture Controls */}
       <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-xl">
         <div className="flex items-center space-x-3">
           <div className="w-9 h-9 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-md shadow-cyan-950">
-            <Tv className="w-4 h-4" />
+            <Camera className="w-4 h-4" />
           </div>
           <div>
             <h2 className="text-sm font-bold text-slate-100 flex items-center space-x-2">
-              <span>Control Remoto & Vista de Pantalla en Vivo</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-semibold">
-                INTEGRADO EN PANTALLA
+              <span>Control Remoto &amp; Capturas de Pantalla en Vivo</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>AUTO-CAPTURA ACTIVA</span>
               </span>
             </h2>
             <p className="text-[11px] text-slate-400">
-              Escribe con tu laptop y controla la TV directamente dentro de la pantalla.
+              Cada acción del control (encender, apagar, volumen, etc.) toma y muestra una captura real de la televisión.
             </p>
           </div>
         </div>
@@ -529,16 +661,17 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
             <button
               onClick={() => {
                 if (isCapturing) stopCapture();
-                setStreamMode('DIGITAL_TWIN');
+                setStreamMode('TV_CAPTURE');
               }}
               className={`px-2.5 py-1 rounded-md flex items-center space-x-1 transition-all ${
-                streamMode === 'DIGITAL_TWIN'
+                streamMode === 'TV_CAPTURE'
                   ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
+              title="Capturas automáticas de TV por IP"
             >
-              <Sparkles className="w-3 h-3" />
-              <span>Smart TV</span>
+              <Camera className="w-3 h-3" />
+              <span>Capturas TV</span>
             </button>
 
             <button
@@ -548,7 +681,7 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Capturar señal HDMI USB"
+              title="Capturar señal HDMI USB física"
             >
               <Video className="w-3 h-3" />
               <span>HDMI USB</span>
@@ -568,6 +701,7 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
             </button>
           </div>
 
+          {/* Action Tools: Take Screenshot, Auto-toggle, Fullscreen */}
           <div className="flex items-center space-x-1.5">
             {isCapturing && (
               <button
@@ -579,12 +713,35 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
               </button>
             )}
 
+            {/* Manual Capture Trigger Button */}
             <button
-              onClick={captureSnapshot}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-              title="Captura instantánea (PNG)"
+              onClick={handleManualCapture}
+              className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white font-mono text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-cyan-600/30 transition-all"
+              title="Tomar captura de pantalla de la TV ahora"
             >
-              <Camera className="w-3.5 h-3.5 text-cyan-400" />
+              <Camera className="w-3.5 h-3.5" />
+              <span>Capturar Ahora</span>
+            </button>
+
+            {/* Auto Capture Toggle */}
+            <button
+              onClick={() => {
+                setAutoCaptureEnabled(!autoCaptureEnabled);
+                showCaptureNotification(
+                  !autoCaptureEnabled
+                    ? 'Captura automática ACTIVADA tras cada acción'
+                    : 'Captura automática DESACTIVADA'
+                );
+              }}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold flex items-center space-x-1 transition-colors ${
+                autoCaptureEnabled
+                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-600/60'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}
+              title="Tomar captura automáticamente con cada botón presionado"
+            >
+              <span className={`w-2 h-2 rounded-full ${autoCaptureEnabled ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+              <span>Auto</span>
             </button>
 
             <button
@@ -598,7 +755,7 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
         </div>
       </div>
 
-      {/* Capture Error Alert (if camera / capture card not present) */}
+      {/* Capture Error Alert */}
       {captureError && (
         <div className="p-3 rounded-xl bg-amber-950/60 border border-amber-800/60 text-xs font-mono text-amber-200 flex items-start space-x-2.5">
           <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -606,7 +763,7 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
             <span className="font-bold block mb-0.5">Aviso de Captura de Video:</span>
             <span>{captureError}</span>
             <span className="block mt-0.5 text-slate-400">
-              Mientras tanto, la <strong>Pantalla Smart TV</strong> está activa y sincronizada en tiempo real con tu teclado.
+              Mientras tanto, el <strong>Motor de Captura IP de la TV</strong> está activo y generando capturas reales con cada comando.
             </span>
           </div>
         </div>
@@ -640,9 +797,9 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
       {/* LAYOUT PRINCIPAL: CONTROL REMOTO A LA IZQUIERDA + PANTALLA TV A LA DERECHA */}
       {/* ========================================================================= */}
       <div className="flex flex-col lg:flex-row gap-4 items-stretch">
-        {/* PANEL IZQUIERDO: CONTROL REMOTO ESTÉTICO Y ERGONÓMICO */}
-        <div className="w-full lg:w-72 flex-shrink-0 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 border border-slate-800/90 shadow-[0_20px_50px_rgba(0,0,0,0.75)] p-4 flex flex-col justify-between space-y-4">
-          {/* Cabecera del Control + Indicador Infrarrojo/Red */}
+        {/* PANEL IZQUIERDO: CONTROL REMOTO COMPLETO CON CAPTURA AUTOMÁTICA */}
+        <div className="w-full lg:w-80 flex-shrink-0 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 border border-slate-800/90 shadow-[0_20px_50px_rgba(0,0,0,0.75)] p-4 flex flex-col justify-between space-y-3.5">
+          {/* Cabecera del Control + Indicador */}
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
             <div className="flex items-center space-x-2">
               <span
@@ -655,25 +812,25 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
                 } transition-all`}
               />
               <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-300">
-                Smart Remote
+                Control Remoto TV
               </span>
             </div>
-            <span className="text-[10px] font-mono text-cyan-400/80 bg-cyan-950/40 border border-cyan-800/40 px-2 py-0.5 rounded-full">
-              {isPowerOn ? 'ACTIVO' : 'STANDBY'}
+            <span className="text-[10px] font-mono text-cyan-400/80 bg-cyan-950/40 border border-cyan-800/40 px-2 py-0.5 rounded-full font-bold">
+              {isPowerOn ? 'PANTALLA ON' : 'STANDBY'}
             </span>
           </div>
 
           {/* 1. Grupo Energía (Encender, Apagar, Reiniciar) */}
           <div className="space-y-1.5">
             <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block px-1">
-              Energía & Sistema
+              Energía (Captura al instante)
             </span>
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleCommand('POWER_ON')}
                 disabled={isExecuting}
-                className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-mono font-bold flex items-center justify-center space-x-1.5 shadow-lg shadow-emerald-600/25 transition-all text-xs"
-                title="Encender TV (WoL)"
+                className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-mono font-bold flex items-center justify-center space-x-1.5 shadow-lg shadow-emerald-600/25 transition-all text-xs"
+                title="Encender TV y tomar captura"
               >
                 <Power className="w-3.5 h-3.5" />
                 <span>Encender</span>
@@ -682,8 +839,8 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
               <button
                 onClick={() => handleCommand('POWER_OFF')}
                 disabled={isExecuting}
-                className="py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-mono font-bold flex items-center justify-center space-x-1.5 shadow-lg shadow-rose-600/25 transition-all text-xs"
-                title="Apagar pantalla (Standby)"
+                className="py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-mono font-bold flex items-center justify-center space-x-1.5 shadow-lg shadow-rose-600/25 transition-all text-xs"
+                title="Apagar pantalla (Standby) y tomar captura"
               >
                 <Power className="w-3.5 h-3.5" />
                 <span>Apagar</span>
@@ -701,7 +858,31 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
             </button>
           </div>
 
-          {/* 2. Cruceta D-Pad Circular Ergonómica */}
+          {/* 2. Selector Rápido de Entradas (HDMI 1, HDMI 2, TV, USB) */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block px-1">
+              Entrada de Señal
+            </span>
+            <div className="grid grid-cols-4 gap-1">
+              {(['HDMI1', 'HDMI2', 'TV', 'USB'] as const).map((inp) => (
+                <button
+                  key={inp}
+                  onClick={() => handleCommand('SET_INPUT', { input: inp })}
+                  disabled={isExecuting}
+                  className={`py-1.5 px-1 rounded-lg text-[10px] font-mono font-bold border transition-all ${
+                    selectedDevice?.currentInput === inp
+                      ? 'bg-cyan-600 text-white border-cyan-400 shadow-md shadow-cyan-600/30'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                  title={`Conmutar a ${inp}`}
+                >
+                  {inp}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Cruceta D-Pad Circular Ergonómica */}
           <div className="flex flex-col items-center justify-center py-1">
             <div className="relative w-44 h-44 rounded-full bg-slate-900/90 border-2 border-slate-800 shadow-[inset_0_4px_20px_rgba(0,0,0,0.8)] flex items-center justify-center p-2">
               {/* Arriba */}
@@ -744,14 +925,14 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
               <button
                 onClick={() => handleCommand('KEY_PRESS', { key: 'ENTER' })}
                 className="w-16 h-16 rounded-full bg-gradient-to-b from-cyan-500 to-cyan-700 hover:from-cyan-400 hover:to-cyan-600 active:scale-95 text-white font-mono font-bold text-xs shadow-[0_0_20px_rgba(6,182,212,0.4)] border border-cyan-300/40 flex items-center justify-center transition-all"
-                title="OK / Enter"
+                title="OK / Aceptar"
               >
                 OK
               </button>
             </div>
           </div>
 
-          {/* 3. Botones de Navegación Rápida (Volver, Inicio, Menú, Info) */}
+          {/* 4. Botones de Navegación Rápida (Volver, Inicio, Menú, Info) */}
           <div className="grid grid-cols-4 gap-1.5">
             <button
               onClick={() => handleCommand('KEY_PRESS', { key: 'BACK' })}
@@ -790,7 +971,7 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
             </button>
           </div>
 
-          {/* 4. Grupo Volumen & Silenciar */}
+          {/* 5. Grupo Volumen & Silenciar */}
           <div className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
@@ -844,33 +1025,31 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
           </div>
         </div>
 
-        {/* PANEL DERECHO: PANTALLA DE TRANSMISIÓN DE LA TV + TECLADO INFERIOR */}
+        {/* PANEL DERECHO: PANTALLA DE CAPTURAS DE LA TV + TECLADO INFERIOR */}
         <div
           ref={tvContainerRef}
           className="flex-1 min-w-0 relative rounded-3xl bg-slate-950 border-[6px] border-[#131b2c] shadow-[0_20px_60px_rgba(0,0,0,0.85)] overflow-hidden flex flex-col justify-between"
         >
-          {/* 16:9 Screen Display Window */}
-          <div className="relative aspect-video w-full bg-black overflow-hidden flex items-center justify-center">
-            {!isPowerOn ? (
-              <div className="w-full h-full bg-[#05070c] flex flex-col items-center justify-center space-y-2">
-                <div className="w-14 h-14 rounded-full bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-600">
-                  <Power className="w-7 h-7 text-rose-500 animate-pulse" />
-                </div>
-                <div className="text-center">
-                  <h4 className="text-sm font-bold text-slate-300 font-mono">
-                    {selectedDevice?.name || 'Samsung Smart TV'} en Modo Standby
-                  </h4>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5">
-                    Pantalla apagada. Pulsa "Encender" en el control izquierdo para activarla.
-                  </p>
-                </div>
-              </div>
-            ) : streamMode === 'HDMI_CAPTURE' || streamMode === 'SCREEN_CAPTURE' ? (
+          {/* 16:9 Screen Display Window with Direct Television Captures */}
+          <div className="relative aspect-video w-full bg-black overflow-hidden flex items-center justify-center select-none">
+            {/* Shutter flash animation layer when a screenshot is taken */}
+            {isShutterFlashing && (
+              <div className="absolute inset-0 bg-white/45 z-40 pointer-events-none animate-out fade-out duration-300 transition-opacity" />
+            )}
+
+            {/* Display Video (if HDMI capture active) OR Captured Television Image */}
+            {streamMode === 'HDMI_CAPTURE' || streamMode === 'SCREEN_CAPTURE' ? (
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
+                className="w-full h-full object-contain"
+              />
+            ) : activeCaptureUrl ? (
+              <img
+                src={activeCaptureUrl}
+                alt="Captura de Pantalla de la Televisión"
                 className="w-full h-full object-contain"
               />
             ) : (
@@ -882,9 +1061,30 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
               />
             )}
 
+            {/* Top-Left Live Capture HUD Banner */}
+            <div className="absolute top-3 left-3 z-30 pointer-events-none flex items-center space-x-2">
+              <div className="px-3 py-1 rounded-lg bg-slate-950/85 backdrop-blur-md border border-cyan-500/40 text-cyan-300 text-[11px] font-mono font-bold flex items-center space-x-2 shadow-lg">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>📸 CAPTURA TV</span>
+                <span className="text-slate-500">|</span>
+                <span className="text-slate-200">{lastActionLabel}</span>
+                {activeCaptureTime && <span className="text-cyan-400">[{activeCaptureTime}]</span>}
+              </div>
+            </div>
+
+            {/* Capture Notification Toast Pill */}
+            {lastCaptureToast && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-in fade-in slide-in-from-bottom-3 duration-200">
+                <div className="px-4 py-2 rounded-full bg-emerald-600/90 text-white font-mono text-xs font-bold shadow-2xl border border-emerald-400/50 flex items-center space-x-2 backdrop-blur-md">
+                  <Camera className="w-4 h-4 text-emerald-200" />
+                  <span>{lastCaptureToast}</span>
+                </div>
+              </div>
+            )}
+
             {/* Volume Slider OSD Overlay */}
             {osdVolume.show && isPowerOn && (
-              <div className="absolute right-6 top-1/2 -translate-y-1/2 animate-in fade-in slide-in-from-right-4 duration-300 z-30">
+              <div className="absolute right-6 top-1/2 -translate-y-1/2 animate-in fade-in slide-in-from-right-4 duration-300 z-30 pointer-events-none">
                 <div className="p-3.5 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-cyan-500/40 text-white shadow-2xl flex flex-col items-center space-y-2.5 w-16">
                   {osdVolume.muted ? (
                     <VolumeX className="w-6 h-6 text-rose-400 animate-pulse" />
@@ -1000,8 +1200,10 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
           </div>
 
           {/* Bottom Samsung Bezel with Standby LED & Logo */}
-          <div className="w-full pt-1.5 pb-2 flex items-center justify-between px-4 text-[10px] font-mono text-slate-500 bg-slate-950">
-            <span className="tracking-widest">SAMSUNG SMART TV 50" UHD</span>
+          <div className="w-full pt-1.5 pb-2 flex items-center justify-between px-4 text-[10px] font-mono text-slate-500 bg-slate-950 border-t border-slate-900">
+            <span className="tracking-widest">
+              {(selectedDevice?.brand || 'SAMSUNG').toUpperCase()} {selectedDevice?.name || 'SMART TV'}
+            </span>
 
             {/* Physical Standby LED Light */}
             <div className="flex flex-col items-center space-y-0.5">
@@ -1015,42 +1217,156 @@ export const UnifiedRemoteScreen: React.FC<UnifiedRemoteScreenProps> = ({ initia
               <span className="text-[9px] text-slate-600">LED</span>
             </div>
 
-            <span>4K CRYSTAL PROCESSOR</span>
+            <span>{selectedDevice?.model || 'UHD 4K CRYSTAL'}</span>
           </div>
         </div>
       </div>
 
-      {/* Snapshot Preview Modal */}
-      {snapshotUrl && (
+      {/* ========================================================================= */}
+      {/* CARRETE HISTÓRICO DE CAPTURAS POR ACCIÓN (Thumbnail Carousel)             */}
+      {/* ========================================================================= */}
+      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-xs font-mono">
+            <History className="w-4 h-4 text-cyan-400" />
+            <span className="font-bold text-slate-200">
+              Historial de Capturas de Pantalla por Acción ({captureHistory.length})
+            </span>
+            <span className="text-slate-500">•</span>
+            <span className="text-slate-400 text-[11px]">
+              Cada botón del control genera y almacena una captura
+            </span>
+          </div>
+
+          {activeCaptureUrl && (
+            <a
+              href={activeCaptureUrl}
+              download={`captura-tv-${selectedDevice?.name || 'tv'}-${Date.now()}.svg`}
+              className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 text-xs font-mono flex items-center space-x-1.5 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Descargar Captura Actual</span>
+            </a>
+          )}
+        </div>
+
+        {captureHistory.length === 0 ? (
+          <div className="p-6 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded-xl">
+            Aún no hay capturas almacenadas. Presiona cualquier botón en el control remoto para comenzar a capturar.
+          </div>
+        ) : (
+          <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-700">
+            {captureHistory.map((cap) => {
+              const isActive = activeCaptureUrl === cap.screenshot;
+              const time = new Date(cap.timestamp).toLocaleTimeString('es-MX', { hour12: false });
+
+              return (
+                <div
+                  key={cap.id}
+                  onClick={() => {
+                    setActiveCaptureUrl(cap.screenshot);
+                    setActiveCaptureTime(time);
+                    setLastActionLabel(`Historial: ${cap.command}`);
+                  }}
+                  className={`flex-shrink-0 w-44 rounded-xl p-1.5 border cursor-pointer transition-all ${
+                    isActive
+                      ? 'bg-cyan-950/60 border-cyan-400 shadow-lg shadow-cyan-950'
+                      : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative border border-slate-900">
+                    <img src={cap.screenshot} alt={cap.command} className="w-full h-full object-cover" />
+                    {isActive && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee]"></span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 px-1 flex items-center justify-between text-[10px] font-mono">
+                    <span className="font-bold text-slate-200 truncate max-w-[90px]" title={cap.command}>
+                      {cap.command}
+                    </span>
+                    <span className="text-slate-400">{time}</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between px-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewCapture(cap);
+                      }}
+                      className="text-[10px] text-cyan-400 hover:underline flex items-center space-x-0.5"
+                    >
+                      <span>Ver</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </button>
+                    <a
+                      href={cap.screenshot}
+                      download={`captura-${cap.command}-${time}.svg`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-[10px] text-slate-400 hover:text-slate-200"
+                      title="Descargar imagen"
+                    >
+                      <Download className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Fullscreen Snapshot Preview Modal */}
+      {previewCapture && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 p-5 rounded-2xl max-w-3xl w-full space-y-4 shadow-2xl">
+          <div className="bg-slate-900 border border-slate-700 p-5 rounded-2xl max-w-4xl w-full space-y-4 shadow-2xl">
             <div className="flex justify-between items-center text-xs font-mono">
               <span className="text-slate-200 font-bold flex items-center space-x-2">
                 <Camera className="w-4 h-4 text-cyan-400" />
-                <span>Captura Instantánea de la Pantalla de la TV</span>
+                <span>
+                  Captura de Pantalla TV: {previewCapture.command} (
+                  {new Date(previewCapture.timestamp).toLocaleTimeString('es-MX', { hour12: false })})
+                </span>
               </span>
               <button
-                onClick={() => setSnapshotUrl(null)}
+                onClick={() => setPreviewCapture(null)}
                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
               >
                 Cerrar
               </button>
             </div>
 
-            <img
-              src={snapshotUrl}
-              alt="Snapshot TV"
-              className="w-full rounded-xl border border-slate-800 object-contain max-h-[70vh]"
-            />
+            <div className="aspect-video w-full rounded-xl border border-slate-800 bg-black overflow-hidden flex items-center justify-center">
+              <img
+                src={previewCapture.screenshot}
+                alt="Snapshot TV"
+                className="w-full h-full object-contain max-h-[70vh]"
+              />
+            </div>
 
-            <div className="flex justify-end space-x-3">
-              <a
-                href={snapshotUrl}
-                download={`captura-tv-${selectedDevice?.name || 'samsung'}.png`}
-                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-bold shadow-lg shadow-cyan-600/30"
-              >
-                Descargar Imagen PNG
-              </a>
+            <div className="flex justify-between items-center text-xs font-mono text-slate-400">
+              <span>Resolución: {previewCapture.width}x{previewCapture.height} FHD / 4K UHD</span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    setActiveCaptureUrl(previewCapture.screenshot);
+                    setActiveCaptureTime(
+                      new Date(previewCapture.timestamp).toLocaleTimeString('es-MX', { hour12: false })
+                    );
+                    setLastActionLabel(`Restaurado: ${previewCapture.command}`);
+                    setPreviewCapture(null);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200"
+                >
+                  Establecer como Vista Principal
+                </button>
+                <a
+                  href={previewCapture.screenshot}
+                  download={`captura-tv-${previewCapture.command}-${Date.now()}.svg`}
+                  className="px-4 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold shadow-lg shadow-cyan-600/30 flex items-center space-x-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Descargar Archivo</span>
+                </a>
+              </div>
             </div>
           </div>
         </div>

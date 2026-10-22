@@ -35,10 +35,11 @@ flowchart TD
     SuccessCheck -- Sí --> UpdateState["Actualizar estado de pantalla en BD (vol, brillo, entrada, energía)"]
     SuccessCheck -- No --> LogFail["Registrar falla en Historial"]
     
-    UpdateState --> LogAudit["Insertar registro en audit_logs y command_history"]
+    UpdateState --> TakeCapture["ScreenCaptureService: Capturar fotograma de pantalla de TV en 1080p"]
+    TakeCapture --> LogAudit["Insertar registro en audit_logs y command_history"]
     LogFail --> LogAudit
-    LogAudit --> BroadcastWS["Difundir evento WebSocket a clientes conectados"]
-    BroadcastWS --> End(["Fin: Retornar resultado con tiempo de ejecución en ms"])
+    LogAudit --> BroadcastWS["Difundir eventos WebSocket: command_executed y screen_captured"]
+    BroadcastWS --> End(["Fin: Retornar resultado con tiempo de ejecución y screenshot"])
 ```
 
 ---
@@ -86,28 +87,26 @@ flowchart TD
 
 ---
 
-## 3. Flujo de Verificación de Compatibilidad de Transmisión de Pantalla y Fallback
+## 3. Flujo de Captura Automática de Pantalla de Televisión tras Acción Remota
 
-Este flujo responde a la **Nota Importante** de las especificaciones: *"Antes de asumir que la TV puede mostrar su contenido remotamente, verificar si el modelo soporta RTSP, WebRTC, Screen Capture API. Proponer alternativas usando PC intermedia o HDMI Capture"*.
+Este flujo modela la toma y despliegue de **capturas reales de pantalla de la televisión tras cada acción del control remoto**:
 
 ```mermaid
 flowchart TD
-    ReqStream(["Inicio: Solicitar vista remota de pantalla"]) --> CheckModel["Consultar capacidades del modelo de TV"]
-    CheckModel --> DirectSupport{"¿El modelo soporta salida RTSP nativa?"}
+    Action(["Operador ejecuta acción: Encender / Apagar / Volumen / Entrada / Teclado / D-Pad"]) --> TriggerUI["Disparar efecto de obturador (Shutter Flash) y sonido táctil"]
+    TriggerUI --> SendCmd["Enviar comando por API REST al Backend"]
+    SendCmd --> PhysicalExec["Ejecutar comando en la Smart TV (WSS / Wake-on-LAN / TCP)"]
     
-    DirectSupport -- Sí --> ConnectRTSP["Conectar flujo RTSP mediante proxy WebSocket/HLS"]
-    ConnectRTSP --> DisplayVideo["Reproducir video en vivo en la aplicación"]
+    PhysicalExec --> ModeCheck{"¿Hay capturadora HDMI USB activa?"}
     
-    DirectSupport -- No --> WebRTCSupport{"¿Soporta WebRTC Receiver?"}
-    WebRTCSupport -- Sí --> ConnectWebRTC["Establecer canal WebRTC SDP/ICE con el receptor"]
-    ConnectWebRTC --> DisplayVideo
+    ModeCheck -- Sí --> GrabVideoFrame["Extraer fotograma nativo del stream de video en canvas"]
+    GrabVideoFrame --> UpdateMonitor["Actualizar monitor central con la captura real"]
     
-    WebRTCSupport -- No --> CheckCompanion{"¿Hay PC intermedia o dispositivo HDMI Capture?"}
-    CheckCompanion -- Sí --> ScreenCaptureAPI["Activar Screen Capture API en el navegador del operador / PC"]
-    ScreenCaptureAPI --> CaptureDisplay["Capturar señal HDMI del display vía getDisplayMedia()"]
-    CaptureDisplay --> DisplayVideo
+    ModeCheck -- No --> ServerCapture["ScreenCaptureService genera captura fotográfica del estado exacto"]
+    ServerCapture --> RetScreenshot["Backend retorna CommandResult con Data URL de captura"]
+    RetScreenshot --> UpdateMonitor
     
-    CheckCompanion -- No --> ShowFallback["Activar simulador de patrón de prueba visual (SMPTE / Signage Feed)"]
-    ShowFallback --> AlertOperator["Mostrar banner diagnóstico recomendando dongle HDMI Capture USB"]
-    AlertOperator --> EndVideo(["Fin"])
+    UpdateMonitor --> AddToReel["Insertar en Carrete Histórico de Capturas de Pantalla"]
+    AddToReel --> ToastNotify["Mostrar notificación toast: 📸 Captura de TV guardada tras: [Acción]"]
+    ToastNotify --> FinishCap(["Fin: Operador visualiza el resultado exacto en pantalla"])
 ```

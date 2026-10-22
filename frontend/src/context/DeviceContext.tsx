@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Device, DashboardStats, CommandType, CommandResult } from '../types/index.js';
+import { Device, DashboardStats, CommandType, CommandResult, ScreenCapture } from '../types/index.js';
 import { deviceApi, controlApi, telemetryApi } from '../services/api.js';
 import { socketService } from '../services/socket.js';
 import { useAuth } from './AuthContext.js';
@@ -11,6 +11,7 @@ interface DeviceContextType {
   isLoading: boolean;
   isSocketConnected: boolean;
   lastCommandResult: CommandResult | null;
+  latestCapture: ScreenCapture | null;
   setSelectedDevice: (device: Device | null) => void;
   refreshDevices: () => Promise<void>;
   refreshStats: () => Promise<void>;
@@ -32,6 +33,7 @@ export const DeviceProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isLoading, setIsLoading] = useState(false);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [lastCommandResult, setLastCommandResult] = useState<CommandResult | null>(null);
+  const [latestCapture, setLatestCapture] = useState<ScreenCapture | null>(null);
 
   const refreshDevices = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -93,7 +95,25 @@ export const DeviceProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const onCommandExecuted = (res: CommandResult) => {
       setLastCommandResult(res);
+      if (res.screenshot) {
+        setLatestCapture({
+          id: String(Date.now()),
+          deviceId: res.deviceId,
+          command: res.command,
+          screenshot: res.screenshot,
+          width: 1920,
+          height: 1080,
+          timestamp: res.screenshotTimestamp || new Date().toISOString(),
+          source: 'TV_HARDWARE_RENDER',
+        });
+      }
       refreshStats();
+    };
+
+    const onScreenCaptured = (data: { deviceId: string; command: string; capture: ScreenCapture }) => {
+      if (data?.capture) {
+        setLatestCapture(data.capture);
+      }
     };
 
     socket.on('connect', onConnect);
@@ -102,6 +122,7 @@ export const DeviceProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     socket.on('device_created', onDeviceCreated);
     socket.on('device_deleted', onDeviceDeleted);
     socket.on('command_executed', onCommandExecuted);
+    socket.on('screen_captured', onScreenCaptured);
 
     setIsSocketConnected(socket.connected);
 
@@ -118,6 +139,7 @@ export const DeviceProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       socket.off('device_created', onDeviceCreated);
       socket.off('device_deleted', onDeviceDeleted);
       socket.off('command_executed', onCommandExecuted);
+      socket.off('screen_captured', onScreenCaptured);
     };
   }, [isAuthenticated]);
 
@@ -177,6 +199,7 @@ export const DeviceProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isLoading,
         isSocketConnected,
         lastCommandResult,
+        latestCapture,
         setSelectedDevice,
         refreshDevices,
         refreshStats,

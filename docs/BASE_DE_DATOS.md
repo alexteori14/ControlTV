@@ -127,9 +127,37 @@ Registra el inventario de pantallas Smart TV y displays Digital Signage.
 
 ### 2.3 Tabla `audit_logs`
 Registro inmutable de auditoría para cumplimiento normativo (quién hizo qué y cuándo).
+| Columna | Tipo | Nulo | Descripción |
+| :--- | :--- | :---: | :--- |
+| `id` | VARCHAR(64) | No | Identificador UUID v4 único |
+| `user_id` | VARCHAR(64) | Sí | Llave foránea del usuario que ejecutó la acción |
+| `username` | VARCHAR(64) | No | Nombre de usuario registrado en la acción |
+| `device_id` | VARCHAR(64) | Sí | Llave foránea de la pantalla afectada |
+| `device_name` | VARCHAR(128) | Sí | Nombre de la pantalla en el momento de la acción |
+| `action` | VARCHAR(64) | No | Tipo de acción (ej: `CMD_POWER_ON`, `CMD_SET_VOLUME`, `DEVICE_CREATE`) |
+| `details` | TEXT | Sí | Detalle contextual de la operación |
+| `status` | VARCHAR(32) | No | Resultado: `SUCCESS`, `FAILED` |
+| `ip_address` | VARCHAR(64) | Sí | Dirección IP origen del operador |
+| `timestamp` | TIMESTAMP | No | Fecha y hora UTC del evento |
 
 ### 2.4 Tabla `command_history`
 Historial de telemetría de red y tiempos de respuesta de cada instrucción enviada.
+| Columna | Tipo | Nulo | Descripción |
+| :--- | :--- | :---: | :--- |
+| `id` | VARCHAR(64) | No | Identificador UUID v4 |
+| `device_id` | VARCHAR(64) | No | Identificador de la pantalla que recibió el comando |
+| `device_name` | VARCHAR(128) | No | Nombre de la pantalla |
+| `command` | VARCHAR(64) | No | Código del comando (`POWER_ON`, `VOLUME_UP`, `SET_INPUT`, etc.) |
+| `params` | TEXT | Sí | Carga útil (Payload JSON) despachada |
+| `result_status`| VARCHAR(32) | No | Estado de respuesta: `SUCCESS`, `FAILED` |
+| `result_message`| TEXT | No | Mensaje diagnóstico devuelto por el driver de red |
+| `execution_time_ms`| INTEGER | No | Duración exacta de la transacción en milisegundos |
+| `timestamp` | TIMESTAMP | No | Marca de tiempo del despacho |
 
 ### 2.5 Tabla `telemetry`
 Series temporales registradas periódicamente por el monitor de fondo (heartbeat) para alimentar los gráficos de estabilidad térmica y latencia de red.
+
+---
+
+## 3. Buffer de Capturas de Pantalla en Memoria (`ScreenCaptureService`)
+Adicionalmente a la base de datos relacional, el sistema gestiona un **Buffer Circular en Memoria** de alta velocidad que almacena las últimas **30 capturas de pantalla de televisión** por dispositivo (`ScreenCapture`), enriqueciendo cada `command_history` con fotogramas visuales directos en resolución 1080p/4K para su consulta, auditoría visual inmediata y descarga.

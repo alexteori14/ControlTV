@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { CommandExecutorService } from '../services/CommandExecutorService.js';
+import { ScreenCaptureService } from '../services/ScreenCaptureService.js';
+import { DeviceManagerService } from '../services/DeviceManagerService.js';
 import { authenticateJwt, AuthenticatedRequest } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -126,6 +128,55 @@ router.post('/:id/brightness', authenticateJwt, async (req: AuthenticatedRequest
       req.ip
     );
     res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/control/:id/screenshot - Returns current or latest TV screen capture
+router.get('/:id/screenshot', authenticateJwt, async (req, res) => {
+  try {
+    const deviceId = req.params.id as string;
+    const device = await DeviceManagerService.getDeviceById(deviceId);
+    if (!device) {
+      res.status(404).json({ error: 'Dispositivo no encontrado' });
+      return;
+    }
+
+    let capture = ScreenCaptureService.getLatestCapture(deviceId);
+    if (!capture) {
+      capture = await ScreenCaptureService.captureForDevice(device, 'STATUS_CHECK');
+    }
+
+    res.json(capture);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/control/:id/capture - Forces a live television screen capture on-demand
+router.post('/:id/capture', authenticateJwt, async (req: AuthenticatedRequest, res) => {
+  try {
+    const deviceId = req.params.id as string;
+    const device = await DeviceManagerService.getDeviceById(deviceId);
+    if (!device) {
+      res.status(404).json({ error: 'Dispositivo no encontrado' });
+      return;
+    }
+
+    const capture = await ScreenCaptureService.captureForDevice(device, 'MANUAL_CAPTURE');
+    res.json(capture);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/control/:id/captures - Returns action capture history for television
+router.get('/:id/captures', authenticateJwt, async (req, res) => {
+  try {
+    const deviceId = req.params.id as string;
+    const history = ScreenCaptureService.getDeviceCaptures(deviceId);
+    res.json({ captures: history });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

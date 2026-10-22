@@ -73,12 +73,19 @@ El sistema incluye tres usuarios listos para demostración inmediata:
    - Gráfica en tiempo real con **Recharts** de temperatura térmica y latencia de red.
    - Matriz de pantallas con indicadores glowing de estado y acciones rápidas en 1 clic.
 
-5. **Vista Remota de Pantalla (Streaming & Screen Capture):**
-   - **Screen Capture API nativa:** Conecta la señal de cualquier PC intermedia o tarjeta capturadora HDMI USB conectada a la pantalla con 1 clic directo en el navegador.
-   - **Soporte RTSP / WebRTC:** Selector de fuentes de video en directo.
-   - **Simulador de señal en vivo:** Canvas animado a 60 FPS con patrón de prueba SMPTE y telemetría de emisión.
-   - **Modo pantalla completa** y botón de captura instantánea (Snapshot PNG).
-   - **Inspector de compatibilidad:** Análisis diagnóstico de capacidades del modelo según las especificaciones técnicas.
+5. **Motor de Capturas de Pantalla de TV en Vivo (Auto-Capture Engine):**
+   - **En vez de mostrar imágenes estáticas o lienzos genéricos**, el sistema toma y almacena automáticamente **capturas de pantalla de la televisión tras CADA acción del control remoto**:
+     - Al encender (`POWER_ON`): captura la TV iluminada con la interfaz Smart Hub y la entrada HDMI activa.
+     - Al apagar (`POWER_OFF`): captura el panel en reposo (*Standby*) con el LED físico rojo brillante.
+     - Al ajustar volumen (`VOLUME_UP`, `VOLUME_DOWN`, `SET_VOLUME`): captura la pantalla con el OSD vertical translúcido y nivel numérico exacto.
+     - Al silenciar (`TOGGLE_MUTE`, `MUTE`): captura la pantalla con el badge de silencio activado.
+     - Al conmutar entradas (`HDMI 1`, `HDMI 2`, `TV`, `USB`): captura la pantalla con el banner de la fuente activa.
+     - Al sintonizar canal (`SET_CHANNEL`): captura la pantalla con el banner OSD del canal.
+     - Al escribir con teclado (`SEND_TEXT`): captura el texto dentro del buscador de la app de la TV.
+     - Al navegar con la cruceta D-Pad (`KEY_PRESS`): captura el foco desplazándose por la interfaz Smart Hub.
+   - **Carrete Histórico de Capturas:** Galería horizontal en miniatura debajo de la pantalla con visor en pantalla completa y descarga directa en PNG/SVG.
+   - **Efecto de obturador fotográfico (Shutter Flash):** Animación visual en pantalla al tomar cada fotograma.
+   - **Soporte híbrido de video:** Extracción de fotogramas directos desde capturadoras de video HDMI-USB (`getUserMedia`) o generación fotográfica nativa por telemetría IP.
 
 6. **Descubrimiento Automático (Network Discovery):**
    - Escaneo inteligente de la subred local (`192.168.1.0/24` o personalizada).
@@ -105,7 +112,8 @@ ControlTV/
 │   │   ├── middleware/        # Autenticación JWT y validación RBAC
 │   │   ├── protocols/         # Drivers: PJLink, Samsung MDC, LG, Sony, Telnet, SNMP, Virtual
 │   │   ├── routes/            # Endpoints REST (auth, devices, control, discovery, audit, telemetry)
-│   │   ├── services/          # Gestor de pantallas, ejecutor de comandos, escáner, heartbeat
+│   │   ├── services/          # Gestor de pantallas, ejecutor de comandos, capturas TV (ScreenCaptureService)
+│   │   ├── test/              # Batería de pruebas automatizadas (testScreenCaptures.ts)
 │   │   ├── websocket/         # Hub Socket.IO para eventos reactivos y señalización WebRTC
 │   │   └── index.ts           # Servidor principal HTTP, WS y Socket Simulator
 │   ├── package.json

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Device, DiscoveredDevice, DashboardStats, AuditLogEntry, CommandHistoryEntry, TelemetryPoint, CommandResult, CommandType } from '../types/index.js';
+import { Device, DiscoveredDevice, DashboardStats, AuditLogEntry, CommandHistoryEntry, TelemetryPoint, CommandResult, CommandType, ScreenCapture } from '../types/index.js';
 
 const API_BASE = '/api';
 
@@ -100,6 +100,18 @@ export const controlApi = {
   openMiracast: async (): Promise<{ success: boolean; message: string }> => {
     const res = await apiClient.post('/control/miracast');
     return res.data;
+  },
+  getScreenshot: async (deviceId: string): Promise<ScreenCapture> => {
+    const res = await apiClient.get(`/control/${deviceId}/screenshot`);
+    return res.data;
+  },
+  takeCapture: async (deviceId: string): Promise<ScreenCapture> => {
+    const res = await apiClient.post(`/control/${deviceId}/capture`);
+    return res.data;
+  },
+  getCaptures: async (deviceId: string): Promise<ScreenCapture[]> => {
+    const res = await apiClient.get(`/control/${deviceId}/captures`);
+    return res.data.captures;
   },
 };
 

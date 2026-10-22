@@ -119,7 +119,50 @@ Comandos soportados:
   "deviceId": "8493b871-...",
   "message": "Samsung MDC Input switched to HDMI2",
   "executionTimeMs": 28,
-  "deviceState": { "currentInput": "HDMI2" }
+  "deviceState": { "currentInput": "HDMI2" },
+  "screenshot": "data:image/svg+xml;charset=utf-8,...",
+  "screenshotTimestamp": "2026-10-22T17:55:00.123Z"
+}
+```
+
+### 4.2 Obtener Captura de Pantalla Actual
+- **Método:** `GET /api/control/:id/screenshot`
+- **Acceso:** Autenticado
+- **Respuesta (200 OK):**
+```json
+{
+  "id": "c1f7b9e0-...",
+  "deviceId": "8493b871-...",
+  "deviceName": "Samsung Smart TV NOC 50",
+  "command": "STATUS_CHECK",
+  "screenshot": "data:image/svg+xml;charset=utf-8,...",
+  "width": 1920,
+  "height": 1080,
+  "timestamp": "2026-10-22T17:55:00.123Z",
+  "source": "TV_HARDWARE_RENDER"
+}
+```
+
+### 4.3 Forzar Captura Manual en Vivo
+- **Método:** `POST /api/control/:id/capture`
+- **Acceso:** Autenticado
+- **Respuesta (200 OK):** Objeto `ScreenCapture` con la captura generada en tiempo real.
+
+### 4.4 Carrete Histórico de Capturas de la TV
+- **Método:** `GET /api/control/:id/captures`
+- **Acceso:** Autenticado
+- **Respuesta (200 OK):**
+```json
+{
+  "captures": [
+    {
+      "id": "...",
+      "deviceId": "8493b871-...",
+      "command": "POWER_ON",
+      "screenshot": "data:image/svg+xml;charset=utf-8,...",
+      "timestamp": "2026-10-22T17:54:10.000Z"
+    }
+  ]
 }
 ```
 
@@ -158,6 +201,7 @@ Comandos soportados:
 | `device_updated` | Servidor -> Cliente | Emite el nuevo estado en tiempo real tras un comando o heartbeat |
 | `device_created` | Servidor -> Cliente | Notifica que se registró una nueva pantalla |
 | `device_deleted` | Servidor -> Cliente | Notifica eliminación de un display |
-| `command_executed` | Servidor -> Cliente | Emite resultado y duración del comando |
+| `command_executed` | Servidor -> Cliente | Emite resultado, duración y fotograma de captura tras el comando |
+| `screen_captured` | Servidor -> Cliente | Emite la captura de pantalla de TV recién tomada en tiempo real |
 | `subscribe_device` | Cliente -> Servidor | Suscribe la conexión a una sala específica de un display |
 | `webrtc_signal` | Bidireccional | Intercambio de señales SDP e ICE candidates para streaming WebRTC |

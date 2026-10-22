@@ -6,8 +6,9 @@ Para garantizar el principio de menor privilegio, el sistema implementa tres per
 
 | Funcionalidad / Módulo | ADMIN | SUPERVISOR | OPERADOR |
 | :--- | :---: | :---: | :---: |
-| **Control Remoto (Encender, Apagar, Volumen, Entrada)** | Sí | Sí | Sí |
-| **Vista Remota en Vivo / Screen Capture** | Sí | Sí | Sí |
+| **Control Remoto (Encender, Apagar, Volumen, Entrada, Teclado)** | Sí | Sí | Sí |
+| **Motor de Capturas de TV (Automática y Manual)** | Sí | Sí | Sí |
+| **Descarga de Fotogramas de Captura (PNG / SVG)** | Sí | Sí | Sí |
 | **Ver Telemetría y Dashboard NOC** | Sí | Sí | Sí |
 | **Registrar / Editar Pantallas** | Sí | Sí | No |
 | **Escanear Red LAN (Network Discovery)** | Sí | Sí | No |

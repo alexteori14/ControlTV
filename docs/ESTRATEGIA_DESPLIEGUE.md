@@ -43,6 +43,14 @@ docker compose logs -f backend
 
 Si se desea ejecutar la aplicación localmente en una estación de trabajo de ingeniería sin necesidad de Docker ni de instalar PostgreSQL previamente:
 
+### Opción A (Orquestador en 1 Clic - Recomendada):
+Desde la raíz del proyecto ejecutar:
+```bash
+npm start
+```
+*(O ejecutar `.\start.ps1` / doble clic a `start.bat`).* Esto verificará dependencias, levantará simultáneamente Backend y Frontend y abrirá el navegador en `http://localhost:3000`.
+
+### Opción B (Manual en 2 Terminales):
 ```powershell
 # 1. Iniciar el Backend (conmutará automáticamente al motor SQLite integrado)
 cd backend
@@ -55,6 +63,9 @@ npm install
 npm run dev
 ```
 La aplicación abrirá la interfaz en `http://localhost:3000` comunicándose con el backend en `http://localhost:5000`.
+
+### Requisitos del Motor de Capturas de Pantalla:
+El **Motor de Capturas de Pantalla de TV en Vivo** (`ScreenCaptureService`) está optimizado para funcionar sin dependencias nativas complejas de C++ (no requiere `node-canvas` ni compiladores externos en Windows/Linux), sirviendo fotogramas instantáneos en 1080p/4K sobre WebSockets y HTTP de forma ultraligera.
 
 ---
 

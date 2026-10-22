@@ -107,6 +107,20 @@ export interface CommandResult {
   deviceState?: Partial<Device>;
   executionTimeMs: number;
   rawResponse?: any;
+  screenshot?: string;
+  screenshotTimestamp?: string;
+}
+
+export interface ScreenCapture {
+  id: string;
+  deviceId: string;
+  deviceName?: string;
+  command: CommandType | string;
+  screenshot: string;
+  width: number;
+  height: number;
+  timestamp: string;
+  source: 'HDMI_CAPTURE' | 'IP_STREAM' | 'TV_HARDWARE_RENDER';
 }
 
 export interface AuditLogEntry {

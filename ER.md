@@ -505,3 +505,21 @@ Al inicializar la base de datos por primera vez, el sistema inserta automáticam
 - **Fabricante/Modelo:** Samsung / UN5073CVT403309Z
 - **Protocolo de Enlace:** `WEBSOCKET` (Samsung Smart Remote WSS con Token `13423728`)
 - **Ubicación:** Sala de Control Principal NOC
+
+---
+
+## 10. Persistencia de Capturas de Pantalla de Televisión (`ScreenCapture`)
+
+Para respaldar el **Motor de Capturas de Pantalla en Vivo** tras cada acción remota, el sistema complementa la persistencia relacional con una capa de almacenamiento en memoria de alta velocidad (`ScreenCaptureService`):
+
+* Cada ejecución registrada en `command_history` genera de forma síncrona un objeto `ScreenCapture` con la captura en resolución 1920x1080 (16:9).
+* Se almacena en un buffer circular en memoria (máximo 30 capturas por televisor) evitando saturar el almacenamiento físico en disco con blobs binarios pesados.
+* Estructura de la entidad `ScreenCapture`:
+  - `id`: UUID v4 de la captura.
+  - `deviceId`: Identificador foráneo de la pantalla.
+  - `deviceName`: Nombre de la pantalla al momento de la captura.
+  - `command`: Acción que detonó la captura (`POWER_ON`, `POWER_OFF`, `VOLUME_UP`, etc.).
+  - `screenshot`: Cadena Base64 Data URL con el fotograma visual de la televisión.
+  - `width` / `height`: 1920 x 1080.
+  - `timestamp`: Marca de tiempo ISO-8601.
+  - `source`: Fuente de captura (`TV_HARDWARE_RENDER` o `HDMI_CAPTURE`).
